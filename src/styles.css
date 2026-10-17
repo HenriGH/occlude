@@ -323,7 +323,7 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
   .main-content { padding: calc(24px + var(--safe-top)) 20px calc(28px + var(--mobile-nav-height)); }
   .mobile-settings { display: inline-flex; }
   .mobile-tabbar { position: fixed; inset: auto 0 0; z-index: 20; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; height: var(--mobile-nav-height); padding: 6px calc(20px + var(--safe-right)) calc(6px + var(--safe-bottom)) calc(20px + var(--safe-left)); border-top: 1px solid var(--border); background: var(--bg); }
-  .mobile-tabbar > button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; min-height: 48px; padding: 3px 12px; border-radius: 12px; color: var(--muted); font-size: 11px; font-weight: 500; touch-action: manipulation; }
+  .mobile-tabbar > button { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 48px; padding: 3px 12px; border-radius: 12px; color: var(--muted); touch-action: manipulation; }
   .mobile-tabbar > button[aria-current="page"] { background: var(--soft); color: var(--accent-text); }
   .mobile-folder-path { display: flex; align-items: center; gap: 4px; overflow-x: auto; margin: -10px 0 12px; overscroll-behavior-x: contain; scrollbar-width: thin; }
   .mobile-folder-path > button, .mobile-folder-path > span { flex-shrink: 0; }

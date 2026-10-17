@@ -169,8 +169,8 @@ export default function App() {
       {(dragging || processing) && <div className="drop-overlay" role="status"><div><ImagePlus size={44} /><h2>{processing ? 'Dein Bild wird vorbereitet …' : 'Hier loslassen. Gleich loslernen.'}</h2><p>PNG, JPEG oder WebP · bis zu 15 MB</p></div></div>}
     </main>
     {!session && <nav className="mobile-tabbar" aria-label="Mobile Navigation">
-      <button aria-current={view === 'dashboard' && !draft ? 'page' : undefined} onClick={() => openMobileView('dashboard')}><LayoutDashboard size={23} aria-hidden="true" /><span>Übersicht</span></button>
-      <button aria-current={view === 'library' && !draft ? 'page' : undefined} onClick={() => openMobileView('library')}><BookOpen size={23} aria-hidden="true" /><span>Bibliothek</span></button>
+      <button aria-label="Übersicht" aria-current={view === 'dashboard' && !draft ? 'page' : undefined} onClick={() => openMobileView('dashboard')}><LayoutDashboard size={23} aria-hidden="true" /></button>
+      <button aria-label="Bibliothek" aria-current={view === 'library' && !draft ? 'page' : undefined} onClick={() => openMobileView('library')}><BookOpen size={23} aria-hidden="true" /></button>
     </nav>}
     {toast && <div className={`toast ${toast.error ? 'error' : ''}`} role={toast.error ? 'alert' : 'status'}>{toast.error ? <CircleHelp size={20} /> : <Check size={20} />}<span>{toast.message}</span><button className="icon-button" aria-label="Meldung schließen" onClick={() => setToast(null)}><X size={17} /></button></div>}
     {deckDialog && <DeckDialog decks={sortedDecks} initial={deckDialog} onClose={() => setDeckDialog(null)} onError={onError} onSaved={id => { selectDeck(id); setDeckDialog(null) }} />}
