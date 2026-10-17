@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Session } from '@supabase/supabase-js'
 import { db } from '../db'
@@ -11,10 +11,16 @@ export function useCloud() {
   const [session, setSession] = useState<Session | null>(null)
   const [authReady, setAuthReady] = useState(!supabase)
   const [authError, setAuthError] = useState(initialAuthError)
+  const wake = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // Only this tiny local read guards access to the cached workspace. Loading
+  // auth, status or a large upload queue must not hold the app's startup screen.
+  const identity = useLiveQuery(async () => ({ connection: (await db.syncMeta.get('connection'))?.value as Connection | undefined }))
   const local = useLiveQuery(async () => ({
-    connection: (await db.syncMeta.get('connection'))?.value as Connection | undefined,
     status: ((await db.syncMeta.get('status'))?.value as SyncStatus | undefined) ?? {},
-    pending: await db.outbox.orderBy('createdAt').toArray(),
+    // Key cursors avoid cloning every image/mask payload for a status badge.
+    pending: await db.outbox.orderBy('createdAt').primaryKeys(),
+    conflicts: (await db.outbox.where('state').equals('conflict').toArray()).map(({ id, kind }) => ({ id, kind })),
+    sequence: (await db.syncMeta.get('sequence'))?.value as number | undefined,
   }))
   useEffect(() => {
     if (!supabase) return
@@ -29,35 +35,38 @@ export function useCloud() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, next) => {
       setSession(next); setAuthReady(true)
       if (event === 'SIGNED_IN') setAuthError('')
-      if (event === 'SIGNED_OUT') {
-        // Do not await Supabase APIs inside this auth callback.
-        void db.transaction('rw', db.syncMeta, async () => {
-          const connection = (await db.syncMeta.get('connection'))?.value as Connection | undefined
-          if (connection) await db.syncMeta.put({ key: 'connection', value: { ...connection, locked: true } })
-        }).catch(() => setAuthError('Abmeldung konnte nicht gespeichert werden. Bitte die Seite schließen.'))
-      }
+      // Auth expiry/recovery must not lock an offline workspace. Explicit
+      // sign-out persists the lock before calling Auth (CloudSettings).
     })
     return () => { mounted = false; subscription.unsubscribe() }
   }, [])
-  const owner = local?.connection?.userId
-  const locked = local?.connection?.locked
+  const owner = identity?.connection?.userId
+  const locked = identity?.connection?.locked
+  const signedInOwner = session?.user.id === owner && !!owner
   useEffect(() => {
-    if (!cloudEngine || !owner || locked) return
-    const sync = () => { if (navigator.onLine) void cloudEngine!.sync() }
-    const foreground = () => { if (document.visibilityState === 'visible') sync() }
-    sync()
-    const timer = setInterval(sync, 15000)
-    window.addEventListener('online', sync); window.addEventListener('focus', sync)
+    if (!cloudEngine || !signedInOwner || locked) return
+    const sync = () => { if (navigator.onLine && document.visibilityState !== 'hidden') void cloudEngine!.sync() }
+    // Focus and visibilitychange commonly fire together on mobile. Coalesce
+    // them, and leave the first render free to read the local library first.
+    const foreground = () => { clearTimeout(wake.current); wake.current = setTimeout(() => { wake.current = undefined; sync() }, 400) }
+    foreground()
+    const timer = setInterval(() => { if (wake.current === undefined) sync() }, 15000)
+    window.addEventListener('online', foreground); window.addEventListener('focus', foreground)
     document.addEventListener('visibilitychange', foreground)
-    return () => { clearInterval(timer); window.removeEventListener('online', sync); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', foreground) }
-  }, [owner, locked, session?.user.id])
-  const pendingIds = local?.pending.map(o => o.id).join(',')
+    return () => { clearInterval(timer); clearTimeout(wake.current); wake.current = undefined; window.removeEventListener('online', foreground); window.removeEventListener('focus', foreground); document.removeEventListener('visibilitychange', foreground) }
+  }, [signedInOwner, locked])
   useEffect(() => {
-    if (!cloudEngine || !owner || locked || !navigator.onLine) return
-    const timer = setTimeout(() => void cloudEngine!.sync(), 300)
-    return () => clearTimeout(timer)
-  }, [pendingIds, owner, locked])
+    if (!cloudEngine || !signedInOwner || locked || !local?.sequence || !navigator.onLine || document.visibilityState === 'hidden') return
+    clearTimeout(wake.current)
+    wake.current = setTimeout(() => {
+      wake.current = undefined
+      if (navigator.onLine && document.visibilityState !== 'hidden') void cloudEngine!.sync()
+    }, 300)
+    return () => { clearTimeout(wake.current); wake.current = undefined }
+    // Trigger only on local additions, not acknowledgments/deletions produced
+    // by the worker itself. In-flight additions request another pass.
+  }, [local?.sequence, signedInOwner, locked])
   const mismatch = !!(session && owner && session.user.id !== owner)
-  return { session, authReady, authError, ...local, loaded: !!local, blocked: !!locked || mismatch }
+  return { session, authReady, authError, ...identity, ...local, loaded: !!identity, blocked: !!locked || mismatch }
 }
 export type CloudState = ReturnType<typeof useCloud>

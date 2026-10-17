@@ -13,6 +13,7 @@ let pg: PGlite, owner: string
 const databases: OccludeDB[] = []
 let clock = Date.parse('2026-10-17T12:00:00Z')
 const blobs = new Map<string, Blob>()
+function deferred() { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r }); return { promise, resolve } }
 class TestTransport implements Transport {
   online = true
   loseAck?: WireOperation['kind']
@@ -60,7 +61,7 @@ async function addImage(db: OccludeDB, count = 1) {
 }
 beforeAll(async () => { pg = await sqlBackend() }, 30000)
 beforeEach(async () => { owner = crypto.randomUUID(); await pg.query('insert into auth.users(id) values($1)', [owner]); clock = Date.now() })
-afterEach(async () => { vi.restoreAllMocks(); for (const db of databases.splice(0)) await db.delete() })
+afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllGlobals(); for (const db of databases.splice(0)) await db.delete() })
 afterAll(async () => { await pg?.close() })
 
 describe('local outbox + actual PostgreSQL RPC integration', () => {
@@ -197,6 +198,112 @@ describe('local outbox + actual PostgreSQL RPC integration', () => {
     const other = new SyncEngine(a.db, new TestTransport(stranger))
     await expect(other.connect('other@example.test')).rejects.toThrow(/anderen Konto/)
     expect(((await a.db.syncMeta.get('connection'))!.value as Connection).userId).toBe(owner)
+  })
+  it('does not rewrite unchanged library rows and replays only a card with new remote events', async () => {
+    const a = await device(); await addImage(a.db, 2); await a.engine.connect('student@example.test')
+    const b = await device(); await b.engine.connect('student@example.test')
+    const writes: string[] = []
+    for (const table of [b.db.decks, b.db.images, b.db.regions, b.db.cards, b.db.reviews]) {
+      table.hook('updating', (_changes, key) => { writes.push(`${table.name}:${key}`) })
+      table.hook('deleting', key => { writes.push(`delete:${table.name}:${key}`) })
+      table.hook('creating', (_key, row) => { writes.push(`create:${table.name}:${row.id}`) })
+    }
+    await b.engine.sync()
+    expect(writes).toEqual([])
+    const cards = await a.db.cards.toArray(), before = (await b.db.cards.get(cards[1].id))!.schedule
+    await rateCard(cards[0].id, 3, clock + 1000, crypto.randomUUID(), a.db)
+    await a.engine.sync(); await b.engine.sync()
+    expect(writes.filter(w => w.startsWith('cards:'))).toEqual([`cards:${cards[0].id}`])
+    expect((await b.db.cards.get(cards[1].id))!.schedule).toEqual(before)
+    expect((await b.db.cards.get(cards[0].id))!.schedule.reps).toBe(1)
+    writes.length = 0
+    await b.engine.sync(); expect(writes).toEqual([])
+  })
+  it('does not queue unchanged saves, clone known Blobs, or upload originals again after editing and reopening', async () => {
+    const a = await device(); const imageId = await addImage(a.db); await a.engine.connect('student@example.test')
+    const image = (await a.db.images.get(imageId))!, asset = (await a.db.assets.get(image.assetHash))!
+    const rects = await a.db.regions.where('imageId').equals(imageId).toArray()
+    const upload = vi.spyOn(a.transport, 'upload'), blobWrite = vi.spyOn(a.db.assets, 'put')
+    await saveImage(asset, image.deckId, rects, imageId, a.db)
+    expect(await a.db.outbox.count()).toBe(0)
+    await saveImage(asset, image.deckId, rects.map(r => ({ ...r, x: .2 })), imageId, a.db)
+    expect(await a.db.outbox.count()).toBe(1)
+    expect(blobWrite).not.toHaveBeenCalled()
+    a.db.close(); await a.db.open()
+    await new SyncEngine(a.db, a.transport, () => clock).sync()
+    expect(upload).not.toHaveBeenCalled()
+    expect(await a.db.outbox.count()).toBe(0)
+    const b = await device(); await b.engine.connect('student@example.test')
+    const remoteAsset = await b.engine.asset(imageId), bUpload = vi.spyOn(b.transport, 'upload')
+    await saveImage(remoteAsset, image.deckId, rects.map(r => ({ ...r, x: .3 })), imageId, b.db)
+    await b.engine.sync(); expect(bUpload).not.toHaveBeenCalled()
+    expect((await b.db.regions.toArray())[0].x).toBe(.3)
+  })
+  it('keeps local editing and review usable while a push stalls, and drains changes requested during it', async () => {
+    const a = await device(); await addImage(a.db); await a.engine.connect('student@example.test')
+    const deck = (await a.db.decks.toArray())[0], card = (await a.db.cards.toArray())[0]
+    const entered = deferred(), release = deferred()
+    const apply = a.transport.apply.bind(a.transport)
+    vi.spyOn(a.transport, 'apply').mockImplementationOnce(async (...args) => { entered.resolve(); await release.promise; await apply(...args) })
+    await saveDeck('Erste Änderung', null, deck.id, a.db)
+    const active = a.engine.sync(); await entered.promise
+    await saveDeck('Zweite Änderung', null, deck.id, a.db)
+    await rateCard(card.id, 3, clock + 1000, crypto.randomUUID(), a.db)
+    expect((await a.db.decks.get(deck.id))!.name).toBe('Zweite Änderung')
+    expect((await a.db.cards.get(card.id))!.schedule.reps).toBe(1)
+    expect(await a.db.outbox.count()).toBe(3)
+    const nextPass = a.engine.sync()
+    release.resolve(); await Promise.all([active, nextPass])
+    expect(await a.db.outbox.count()).toBe(0)
+    expect(parseSnapshot(await a.transport.snapshot(owner), owner).decks[0].data.name).toBe('Zweite Änderung')
+    expect((await a.db.cards.get(card.id))!.schedule.reps).toBe(1)
+  })
+  it('drains more than one batch without waiting for the next polling interval', async () => {
+    const a = await device(); await a.engine.connect('student@example.test')
+    const deck = (await a.db.decks.toArray())[0]
+    for (let i = 0; i < 103; i++) await saveDeck(`Änderung ${i}`, null, deck.id, a.db)
+    await a.engine.sync()
+    expect(await a.db.outbox.count()).toBe(0)
+    expect(parseSnapshot(await a.transport.snapshot(owner), owner).decks[0].data.name).toBe('Änderung 102')
+  })
+  it('stops a failed connection after one push instead of trying every queued operation', async () => {
+    const a = await device(); await a.engine.connect('student@example.test')
+    await saveDeck('A', null, undefined, a.db); await saveDeck('B', null, undefined, a.db)
+    const apply = vi.spyOn(a.transport, 'apply').mockRejectedValueOnce(new Error('Connection timed out'))
+    const snapshot = vi.spyOn(a.transport, 'snapshot')
+    await a.engine.sync()
+    expect(apply).toHaveBeenCalledTimes(1); expect(snapshot).not.toHaveBeenCalled()
+    expect((await a.db.outbox.orderBy('createdAt').toArray()).map(o => o.attempts)).toEqual([1, 0])
+    await a.engine.retry(); expect(await a.db.outbox.count()).toBe(0)
+  })
+  it('shares concurrent downloads and uses the persistent local cache afterwards', async () => {
+    const a = await device(); const id = await addImage(a.db); await a.engine.connect('student@example.test')
+    const b = await device(); await b.engine.connect('student@example.test')
+    const download = vi.spyOn(b.transport, 'download')
+    const [first, second] = await Promise.all([b.engine.asset(id), b.engine.asset(id)])
+    expect(first.hash).toBe(second.hash); expect(download).toHaveBeenCalledTimes(1)
+    b.transport.online = false
+    expect((await b.engine.asset(id)).hash).toBe(first.hash)
+    expect(download).toHaveBeenCalledTimes(1)
+  })
+  it('runs only one background worker for a shared browser database across tabs', async () => {
+    let locked = false
+    vi.stubGlobal('navigator', { locks: { request: async (_name: string, _options: unknown, work: (lock: object | null) => Promise<void>) => {
+      if (locked) return work(null)
+      locked = true
+      try { await work({}) } finally { locked = false }
+    } } })
+    const a = await device(); await a.engine.connect('student@example.test')
+    await saveDeck('New local deck', null, undefined, a.db)
+    const entered = deferred(), release = deferred(), apply = a.transport.apply.bind(a.transport)
+    vi.spyOn(a.transport, 'apply').mockImplementationOnce(async (...args) => { entered.resolve(); await release.promise; await apply(...args) })
+    const first = a.engine.sync(); await entered.promise
+    const otherTransport = new TestTransport(owner), snapshot = vi.spyOn(otherTransport, 'snapshot')
+    await new SyncEngine(a.db, otherTransport).sync()
+    expect(snapshot).not.toHaveBeenCalled()
+    release.resolve(); await first
+    expect(await a.db.outbox.count()).toBe(0)
+    expect(await a.db.decks.count()).toBe(2)
   })
   it('uses capped exponential backoff and rejects malformed cloud snapshots before a merge', () => {
     expect(retryDelay(0, () => .5)).toBe(1000)

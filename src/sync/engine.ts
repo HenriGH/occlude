@@ -8,6 +8,9 @@ export function retryDelay(attempt: number, random = Math.random) { return Math.
 export class SyncEngine {
   private running = false
   private resolving = false
+  private active?: Promise<void>
+  private requested = false
+  private downloads = new Map<string, Promise<Asset>>()
   constructor(private database: OccludeDB, private transport: Transport, private clock = Date.now, private random = Math.random) {}
 
   async connect(email: string) {
@@ -44,9 +47,28 @@ export class SyncEngine {
     await this.sync()
   }
 
-  async sync() {
-    if (this.running || this.resolving) return
-    this.running = true
+  sync(): Promise<void> {
+    if (this.resolving) return Promise.resolve()
+    this.requested = true
+    if (!this.active) {
+      this.running = true
+      this.active = (async () => {
+        try {
+          do {
+            this.requested = false
+            if (typeof navigator !== 'undefined' && navigator.locks) {
+              // Tabs share IndexedDB. Serialize their workers so a delayed pull
+              // from one tab cannot replace a newer acknowledged local state.
+              await navigator.locks.request(`occlude-sync:${this.database.name}`, { ifAvailable: true }, async lock => { if (lock) await this.syncOnce() })
+            } else await this.syncOnce()
+          } while (this.requested)
+        } finally { this.running = false; this.active = undefined }
+      })()
+    }
+    return this.active
+  }
+
+  private async syncOnce() {
     try {
       const connection = (await this.database.syncMeta.get('connection'))?.value as Connection | undefined
       if (!connection || connection.locked) return
@@ -55,13 +77,21 @@ export class SyncEngine {
       const pending = await this.database.outbox.orderBy('createdAt').toArray()
       const blocked = new Set<string>()
       let errorMessage = ''
-      for (const operation of pending.slice(0, 100)) {
+      let processed = 0
+      for (const operation of pending) {
         const group = versionKey(operation.kind, operation.entityId)
         if (blocked.has(group) || operation.state === 'conflict' || operation.nextAttemptAt > this.clock()) { blocked.add(group); continue }
+        if (processed++ === 100) { this.requested = true; break }
         try {
           if (operation.kind === 'image.put') {
-            const asset = await this.database.assets.get(String(operation.payload.assetHash))
-            if (asset) await this.transport.upload(connection.userId, asset)
+            const hash = String(operation.payload.assetHash)
+            const key = `uploaded:${connection.userId}:${hash}`
+            if (!(await this.database.syncMeta.get(key))?.value) {
+              const asset = await this.database.assets.get(hash)
+              if (!asset) throw new Error('Das Originalbild fehlt auf diesem Gerät. Die Änderung bleibt ausstehend.')
+              await this.transport.upload(connection.userId, asset)
+              await this.database.syncMeta.put({ key, value: true })
+            }
           }
           const { id, deviceId, kind, entityId, baseVersion, payload } = operation
           const wire: WireOperation = { id, deviceId, kind, entityId, baseVersion, payload }
@@ -73,10 +103,13 @@ export class SyncEngine {
           const conflict = e instanceof CloudError && e.conflict
           await this.database.outbox.update(operation.id, { attempts: operation.attempts + 1, nextAttemptAt: this.clock() + retryDelay(operation.attempts, this.random), state: conflict ? 'conflict' : 'pending', error })
           blocked.add(group); errorMessage = error
+          // A network/auth failure affects the whole connection. Do not repeat
+          // the same failing HTTP request for every queued card, then pull too.
+          if (!conflict) { this.requested = false; throw e }
         }
       }
       const snapshot = parseSnapshot(await this.transport.snapshot(connection.userId), connection.userId)
-      await this.database.transaction('rw', this.database.tables, async () => {
+      await this.database.transaction('rw', this.database.tables.filter(t => t.name !== 'assets'), async () => {
         await mergeSnapshot(this.database, snapshot)
         const remaining = await this.database.outbox.toArray()
         const previous = (await this.database.syncMeta.get('status'))?.value as SyncStatus | undefined
@@ -85,7 +118,7 @@ export class SyncEngine {
     } catch (e) {
       const prior = (await this.database.syncMeta.get('status'))?.value as SyncStatus | undefined
       await this.database.syncMeta.put({ key: 'status', value: { ...prior, running: false, error: e instanceof Error ? e.message : 'Synchronisierung fehlgeschlagen.' } satisfies SyncStatus })
-    } finally { this.running = false }
+    }
   }
 
   async retry() {
@@ -141,12 +174,24 @@ export class SyncEngine {
     if (!image) throw new Error('Dieses Bild existiert nicht mehr.')
     const existing = await this.database.assets.get(image.assetHash)
     if (existing) return existing
+    const pending = this.downloads.get(image.assetHash)
+    if (pending) return pending
+    const request = this.downloadAsset(image)
+    this.downloads.set(image.assetHash, request)
+    try { return await request }
+    finally { this.downloads.delete(image.assetHash) }
+  }
+
+  private async downloadAsset(image: import('../domain').ImageRecord): Promise<Asset> {
     const connection = (await this.database.syncMeta.get('connection'))?.value as Connection | undefined
     if (!connection || connection.locked || await this.transport.userId() !== connection.userId) throw new Error('Bild nicht lokal vorhanden. Bitte mit dem verbundenen Konto online anmelden.')
     if (!image.width || !image.height || !image.mimeType) throw new Error('Bildmetadaten fehlen.')
     const blob = await this.transport.download(connection.userId, image.assetHash)
     const asset = { hash: image.assetHash, blob, width: image.width, height: image.height, mimeType: image.mimeType }
-    await this.database.assets.put(asset)
+    await this.database.transaction('rw', this.database.assets, this.database.syncMeta, async () => {
+      await this.database.assets.put(asset)
+      await this.database.syncMeta.put({ key: `uploaded:${connection.userId}:${image.assetHash}`, value: true })
+    })
     return asset
   }
 }

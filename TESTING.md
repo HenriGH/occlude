@@ -102,3 +102,35 @@ tests and all 7 production-browser scenarios passed. An initial browser failure
 exposed the SDK's nested callback error code being replaced by a generic message;
 the handler was corrected and both recovery scenarios were rerun successfully
 before the complete production-browser run.
+
+## Background sync responsiveness
+
+Validation on 2026-10-17: production build passed, all 64 unit/component/SQL/
+integration checks passed, and all 9 Chromium scenarios passed against that build.
+
+Additional SQL/IndexedDB cases verify zero library-row writes for an unchanged
+snapshot, replay limited to a card receiving new events, no-op editor saves,
+persistent original-image upload markers across restarts and devices, shared
+downloads, local editing/review while a push is stalled, coalesced work arriving
+during a pass, automatic draining beyond 100 operations, stopping a failed batch,
+and one automatic worker per shared browser database with Web Locks.
+
+Transport tests use the real Supabase RPC client with mocked HTTP. They verify
+concurrent token-verification reuse, refreshed tokens, rejection of a different
+account (including a misleading local user object), retry after verification
+failure, and sign-out. Request-deadline tests include stalled response bodies and
+caller cancellation, as well as JSON/Auth versus longer image-transfer deadlines.
+
+`e2e/background-sync.spec.ts` uses the real browser SDK and IndexedDB with every
+external request intercepted. It holds an expired-session refresh unresolved,
+then rejects it: the mobile-sized UI can still open cached cards, save masks,
+rate cards, and retain the queue across another reload. Another scenario holds a
+snapshot and then a push, edits again and reviews before releasing either, then
+checks background delivery, no original-image upload, and persistence after reload.
+Explicit sign-out still locks cached cards in the existing browser scenario.
+
+These are functional checks under controlled network stalls, not measurements on
+the user's physical phone or a hosted Supabase performance benchmark. The user
+reports working live multi-device sync. The cloud agent has not independently
+validated that deployment; the protocol still pulls full metadata snapshots.
+App-shell restart without internet and deliberate deck downloads remain Phase 3.

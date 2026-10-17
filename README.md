@@ -4,9 +4,10 @@ A focused image-occlusion flashcard app with a German interface. Paste a lecture
 screenshot, draw masks, save, and review with FSRS. Project files live in this
 repository, `/workspace/occlude` in the cloud environment.
 
-**Current milestone: Phase 2 integration, pending hosted Supabase validation.** The
+**Current milestone: Phase 2 integration with background synchronization.** The
 local MVP is tested. Passwordless login, transactional sync, the migration, and
-local SQL/security tests are implemented. Apply the migration and configure Auth
+local SQL/security tests are implemented. The user reports working live multi-device
+sync; automated validation uses local SQL and mocked HTTP. For a new project, apply the migration and configure Auth
 using [supabase/SETUP.md](supabase/SETUP.md) before connecting an account. Installable
 offline PWA support and ZIP backups remain planned phases.
 

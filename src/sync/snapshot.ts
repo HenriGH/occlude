@@ -66,33 +66,82 @@ export function parseSnapshot(input: unknown, owner: string): Snapshot {
   return { decks, images, regions, cards, reviews, profile }
 }
 
-// Caller owns a write transaction over all stores. If metadata is still pending,
-// retain it verbatim; review-event union/replay is independent of metadata versions.
+// Caller owns a write transaction over metadata, reviews, outbox and syncMeta.
+// Preserve local schedules and write only actual differences. An unchanged pull
+// must not rebuild the library, replay every review, or invalidate all UI queries.
 export async function mergeSnapshot(database: OccludeDB, snapshot: Snapshot) {
-  const pending = await database.outbox.toArray()
+  const [pending, decks, images, regions, cards, reviews, prefs, meta] = await Promise.all([
+    database.outbox.toArray(), database.decks.toArray(), database.images.toArray(),
+    database.regions.toArray(), database.cards.toArray(), database.reviews.toArray(),
+    database.preferences.get('app'), database.syncMeta.toArray(),
+  ])
   const pendingMetadata = pending.some(o => o.kind !== 'review.add')
+  const versions = new Map(meta.map(m => [m.key, m.value]))
+  const nextMeta = new Map<string, unknown>()
+  const remember = (key: string, value: unknown) => { if (versions.get(key) !== value) nextMeta.set(key, value) }
+  const connection = versions.get('connection') as { userId: string } | undefined
+  if (connection) for (const image of snapshot.images) {
+    // The RPC only publishes metadata after the immutable Storage object exists.
+    remember(`uploaded:${connection.userId}:${image.data.assetHash}`, true)
+  }
+  const same = <T extends object>(a: T, b: T) => {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof T)[])
+    return [...keys].every(key => a[key] === b[key])
+  }
+  const reconcile = async <T extends { id: string }>(table: { bulkDelete(keys: string[]): PromiseLike<unknown>; bulkPut(rows: T[]): PromiseLike<unknown> }, local: T[], remote: T[], unique?: (row: T) => string) => {
+    const before = new Map(local.map(row => [row.id, row]))
+    const after = new Set(remote.map(row => row.id))
+    // Remove changed unique-index entries before putting their replacements,
+    // allowing two images to swap folders without a transient index collision.
+    const remove = local.filter(row => !after.has(row.id)).map(row => row.id)
+    const put = remote.filter(row => !before.has(row.id) || !same(before.get(row.id)!, row))
+    if (unique) for (const row of put) { const old = before.get(row.id); if (old && unique(old) !== unique(row)) remove.push(row.id) }
+    if (remove.length) await table.bulkDelete(remove)
+    if (put.length) await table.bulkPut(put)
+  }
+  let nextCards = new Map(cards.map(card => [card.id, card]))
+  const changedCards = new Set<string>()
   if (!pendingMetadata) {
-    await database.decks.clear(); await database.images.clear(); await database.regions.clear(); await database.cards.clear()
-    await database.decks.bulkPut(snapshot.decks.filter(d => !d.deleted).map(d => d.data))
-    await database.images.bulkPut(snapshot.images.filter(i => !i.deleted).map(i => i.data))
-    await database.regions.bulkPut(snapshot.regions.filter(r => !r.deleted).map(r => r.data))
-    await database.cards.bulkPut(snapshot.cards.filter(c => !c.deleted).map(c => ({ ...c.data, schedule: createEmptyCard(new Date(c.data.createdAt)) })))
-    for (const d of snapshot.decks) await database.syncMeta.put({ key: versionKey('deck.put', d.data.id), value: d.version })
-    for (const i of snapshot.images) await database.syncMeta.put({ key: versionKey('image.put', i.data.id), value: i.version })
+    await reconcile<Deck>(database.decks, decks, snapshot.decks.filter(d => !d.deleted).map(d => d.data))
+    await reconcile<ImageRecord>(database.images, images, snapshot.images.filter(i => !i.deleted).map(i => i.data), i => `${i.deckId}:${i.assetHash}`)
+    await reconcile<Region>(database.regions, regions, snapshot.regions.filter(r => !r.deleted).map(r => r.data))
+    nextCards = new Map(snapshot.cards.filter(c => !c.deleted).map(({ data }) => {
+      const prior = nextCards.get(data.id)
+      const { schedule: _schedule, ...priorData } = prior ?? {} as Flashcard
+      if (prior && same(priorData, data)) return [data.id, prior]
+      changedCards.add(data.id)
+      return [data.id, { ...data, schedule: createEmptyCard(new Date(data.createdAt)) }]
+    }))
+    for (const d of snapshot.decks) remember(versionKey('deck.put', d.data.id), d.version)
+    for (const i of snapshot.images) remember(versionKey('image.put', i.data.id), i.version)
     if (snapshot.profile) {
-      await database.preferences.update('app', snapshot.profile.settings)
-      await database.syncMeta.put({ key: versionKey('settings.put', 'settings'), value: snapshot.profile.version })
+      if (prefs?.newLimit !== snapshot.profile.settings.newLimit || prefs?.dayBoundary !== snapshot.profile.settings.dayBoundary) await database.preferences.update('app', snapshot.profile.settings)
+      remember(versionKey('settings.put', 'settings'), snapshot.profile.version)
     }
-    const prefs = await database.preferences.get('app')
-    if (prefs?.selectedDeckId && !await database.decks.get(prefs.selectedDeckId)) await database.preferences.update('app', { selectedDeckId: null })
+    if (prefs?.selectedDeckId && !snapshot.decks.some(d => !d.deleted && d.data.id === prefs.selectedDeckId)) await database.preferences.update('app', { selectedDeckId: null })
   }
+  const events = new Map(reviews.map(event => [event.id, event]))
+  const newEvents: ReviewEvent[] = []
   for (const remote of snapshot.reviews) {
-    const existing = await database.reviews.get(remote.id)
-    if (existing && (existing.cardId !== remote.cardId || existing.rating !== remote.rating || existing.reviewedAt !== remote.reviewedAt || existing.schedulerVersion !== remote.schedulerVersion)) throw new Error('Widersprüchliche Ereignis-ID in der Cloud. Keine Daten wurden verworfen.')
-    await database.reviews.put(remote)
+    const existing = events.get(remote.id)
+    if (existing && !same(existing, remote)) throw new Error('Widersprüchliche Ereignis-ID in der Cloud. Keine Daten wurden verworfen.')
+    if (!existing) { events.set(remote.id, remote); newEvents.push(remote); changedCards.add(remote.cardId) }
   }
-  for (const card of await database.cards.toArray()) {
-    const events = await database.reviews.where('cardId').equals(card.id).toArray()
-    await database.cards.update(card.id, { schedule: replay(card.createdAt, events) })
+  if (newEvents.length) await database.reviews.bulkPut(newEvents)
+  const history = new Map<string, ReviewEvent[]>()
+  for (const event of events.values()) if (changedCards.has(event.cardId)) {
+    const group = history.get(event.cardId) ?? []
+    group.push(event); history.set(event.cardId, group)
   }
+  for (const id of changedCards) {
+    const card = nextCards.get(id)
+    if (card) nextCards.set(id, { ...card, schedule: replay(card.createdAt, history.get(id) ?? []) })
+  }
+  // Reuse schedule objects for untouched cards; their Date fields and history
+  // are already materialized locally and need no database writes.
+  const removed = cards.filter(card => !nextCards.has(card.id)).map(card => card.id)
+  const put = [...nextCards.values()].filter(card => changedCards.has(card.id))
+  if (removed.length) await database.cards.bulkDelete(removed)
+  if (put.length) await database.cards.bulkPut(put)
+  if (nextMeta.size) await database.syncMeta.bulkPut([...nextMeta].map(([key, value]) => ({ key, value })))
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowDownToLine, ArrowRight, BookOpen, Check, ChevronRight, CircleHelp, Clock3, Ellipsis, Folder, FolderPlus, ImagePlus, LayoutDashboard, Leaf, Menu, Moon, MoreHorizontal, Plus, Settings2, ShieldCheck, Sparkles, Sun, Trash2, Upload, X } from 'lucide-react'
 import { db, defaultPreferences, deleteDeck, initialize, moveImage, removeImage, saveDeck, updatePreferences } from './db'
@@ -49,10 +49,21 @@ export default function App() {
   const decks = data?.decks ?? []
   const selected = decks.find(d => d.id === prefs.selectedDeckId)
   const root = selected?.id ?? null
-  const stats = reviewQueue(data?.cards ?? [], data?.images ?? [], decks, data?.reviews ?? [], prefs, root, new Date(clock))
-  const scope = descendants(decks, root)
-  const images = (data?.images ?? []).filter(i => scope.has(i.deckId)).sort((a, b) => b.createdAt - a.createdAt)
-  const sortedDecks = [...decks].sort((a, b) => deckPath(decks, a.id).localeCompare(deckPath(decks, b.id), 'de'))
+  const library = useMemo(() => {
+    const decks = data?.decks ?? []
+    const prefs = data?.prefs ?? defaultPreferences
+    const scope = descendants(decks, root)
+    const stats = reviewQueue(data?.cards ?? [], data?.images ?? [], decks, data?.reviews ?? [], prefs, root, new Date(clock))
+    const images = (data?.images ?? []).filter(i => scope.has(i.deckId)).sort((a, b) => b.createdAt - a.createdAt)
+    const sortedDecks = [...decks].sort((a, b) => deckPath(decks, a.id).localeCompare(deckPath(decks, b.id), 'de'))
+    const deckStats = new Map(decks.map(d => {
+      const ids = descendants(decks, d.id)
+      const imageIds = new Set((data?.images ?? []).filter(i => ids.has(i.deckId)).map(i => i.id))
+      return [d.id, { count: (data?.cards ?? []).filter(c => imageIds.has(c.imageId)).length, ready: reviewQueue(data?.cards ?? [], data?.images ?? [], decks, data?.reviews ?? [], prefs, d.id, new Date(clock)).queue.length }]
+    }))
+    return { stats, images, sortedDecks, deckStats }
+  }, [data, root, clock])
+  const { stats, images, sortedDecks, deckStats } = library
   const selectDeck = (id: string | null) => { void run(() => db.preferences.update('app', { selectedDeckId: id })); setMenuOpen(false) }
   const navigate = (next: View) => { setView(next); setMenuOpen(false) }
   useEffect(() => {
@@ -119,9 +130,8 @@ export default function App() {
         <div className="stats-grid"><Stat icon={<Clock3 size={19} />} label="Jetzt fällig" value={stats.due.length} description="Zeit für eine Wiederholung" /><Stat icon={<BookOpen size={19} />} label="Neue Karten" value={stats.fresh.length} description={`Bis zu ${prefs.newLimit} neue Karten pro Tag`} /><Stat icon={<Check size={19} />} label="Heute gelernt" value={stats.today} description="Jede Wiederholung zählt" /></div></>}
         <div className="section-heading"><div><h2>{root ? selected?.name : 'Deine Ordner'}<span className="count-pill">{root ? `${images.length} ${images.length === 1 ? 'Bild' : 'Bilder'}` : decks.length}</span></h2><p className="muted small">{root ? 'Mit allen Unterordnern. Ein Lernraum für deinen nächsten Schritt.' : 'Ein bisschen Ordnung macht den Kopf frei.'}</p></div><div className="section-actions">{root && <><button className="icon-button" aria-label="Ausgewählten Ordner bearbeiten" onClick={() => setDeckDialog({ deck: selected, parentId: selected?.parentId ?? null })}><MoreHorizontal size={20} /></button><button className="button subtle small-button" onClick={beginReview} disabled={!stats.queue.length}>Lernen<ArrowRight size={15} /></button></>}<button className="text-button" onClick={() => setDeckDialog({ parentId: root })}><FolderPlus size={16} />Neuer Ordner</button></div></div>
         <div className="deck-grid">{decks.filter(d => d.parentId === root).map(d => {
-          const ids = descendants(decks, d.id); const imageIds = new Set(data.images.filter(i => ids.has(i.deckId)).map(i => i.id)); const count = data.cards.filter(c => imageIds.has(c.imageId)).length
-          const s = reviewQueue(data.cards, data.images, decks, data.reviews, prefs, d.id, new Date(clock))
-          return <div className="deck-card" key={d.id}><button className="deck-open" onClick={() => selectDeck(d.id)}><span className="folder-emblem"><Folder size={23} strokeWidth={1.5} /></span><h3>{d.name}</h3><span className="muted small">{count} Karten · {data.decks.filter(child => child.parentId === d.id).length} Unterordner</span><div className="deck-card-footer"><span className={s.queue.length ? 'due-badge' : 'quiet-badge'}>{s.queue.length ? `${s.queue.length} ${s.queue.length === 1 ? "Karte bereit" : "Karten bereit"}` : count ? 'Alles im Plan' : 'Platz für neues Wissen'}</span><ChevronRight size={16} /></div></button><button className="icon-button deck-options" aria-label={`${d.name} bearbeiten`} onClick={() => setDeckDialog({ deck: d, parentId: d.parentId })}><Ellipsis size={19} /></button></div>
+          const { count, ready } = deckStats.get(d.id)!
+          return <div className="deck-card" key={d.id}><button className="deck-open" onClick={() => selectDeck(d.id)}><span className="folder-emblem"><Folder size={23} strokeWidth={1.5} /></span><h3>{d.name}</h3><span className="muted small">{count} Karten · {data.decks.filter(child => child.parentId === d.id).length} Unterordner</span><div className="deck-card-footer"><span className={ready ? 'due-badge' : 'quiet-badge'}>{ready ? `${ready} ${ready === 1 ? "Karte bereit" : "Karten bereit"}` : count ? 'Alles im Plan' : 'Platz für neues Wissen'}</span><ChevronRight size={16} /></div></button><button className="icon-button deck-options" aria-label={`${d.name} bearbeiten`} onClick={() => setDeckDialog({ deck: d, parentId: d.parentId })}><Ellipsis size={19} /></button></div>
         })}{!decks.length && <button className="new-folder-card" onClick={() => setDeckDialog({ parentId: null })}><FolderPlus size={24} />Deinen ersten Ordner erstellen</button>}</div>
         <div className="section-heading image-section-heading"><div><h2>{view === 'library' ? 'Alle Bilder' : 'Zuletzt hinzugefügt'}<span className="count-pill">{images.length}</span></h2><p className="muted small">Ein Bild. Viele kleine Aha-Momente.</p></div>{view !== 'library' && images.length > 0 && <button className="text-button" onClick={() => navigate('library')}>Alle ansehen<ArrowRight size={15} /></button>}</div>
         {images.length ? <div className="image-grid">{(view === 'library' ? images : images.slice(0, 6)).map(image => <ImageTile key={image.id} image={image} decks={sortedDecks} count={data.cards.filter(c => c.imageId === image.id).length} onEdit={() => void run(() => editImage(image))} onError={onError} />)}</div> : <UploadArea onUpload={() => fileInput.current?.click()} />}

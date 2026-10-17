@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Asset } from '../domain'
 import type { WireOperation } from './model'
+import { cloudFetch } from './network'
 
 export class CloudError extends Error {
   constructor(message: string, public conflict = false) { super(message) }
@@ -22,15 +23,27 @@ function failure(error: { message: string; code?: string }): never {
   throw new CloudError(`Cloud-Anfrage fehlgeschlagen: ${error.message}`)
 }
 export function supabaseTransport(client: SupabaseClient, configuration: { url: string; key: string }): Transport {
+  let verified: { token: string; result: Promise<{ scoped: SupabaseClient; userId: string }> } | undefined
   async function authorized(owner?: string) {
     const { data: { session } } = await client.auth.getSession()
     if (!session) throw new CloudError('Bitte erneut anmelden, um zu synchronisieren. Lokale Karten bleiben verfügbar.')
-    const { data, error } = await client.auth.getUser(session.access_token)
-    if (error || !data.user || owner && data.user.id !== owner) throw new CloudError('Das angemeldete Konto passt nicht zu den lokalen Daten. Synchronisierung angehalten.')
-    // Pin one verified token per request. A concurrent tab changing accounts cannot
-    // redirect an in-flight mutation or download into the new user's workspace.
-    const scoped = createClient(configuration.url, configuration.key, { accessToken: async () => session.access_token })
-    return { scoped, userId: data.user.id }
+    const token = session.access_token
+    // Verify each access token once, sharing concurrent verification. Every
+    // request still re-reads the session and checks its verified owner. Token
+    // refresh/account changes invalidate this cache; RLS authorizes every RPC.
+    if (!verified || verified.token !== token) {
+      const result = (async () => {
+        const { data, error } = await client.auth.getUser(token)
+        if (error || !data.user) throw new CloudError('Cloud-Anmeldung konnte nicht bestätigt werden. Lokale Karten bleiben verfügbar.')
+        const scoped = createClient(configuration.url, configuration.key, { accessToken: async () => token, global: { fetch: cloudFetch } })
+        return { scoped, userId: data.user.id }
+      })()
+      verified = { token, result }
+      void result.catch(() => { if (verified?.result === result) verified = undefined })
+    }
+    const result = await verified.result
+    if (owner && result.userId !== owner) throw new CloudError('Das angemeldete Konto passt nicht zu den lokalen Daten. Synchronisierung angehalten.')
+    return result
   }
   return {
     async userId() {

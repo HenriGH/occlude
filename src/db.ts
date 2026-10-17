@@ -62,7 +62,10 @@ export async function saveImage(asset: Asset, deckId: string, rects: Rect[], exi
     // Re-pasting the same image adds masks instead of replacing existing targets.
     const next = image && !existingImageId ? [...oldRegions, ...rects] : rects
     if (next.length > 500) throw new Error('Pro Bild sind maximal 500 Masken möglich.')
-    await database.assets.put(asset)
+    // Opening and saving an unchanged card is a local no-op. In particular, do
+    // not clone its potentially large original Blob or queue another upload.
+    if (existingImageId && image?.deckId === deckId && next.length === oldRegions.length && next.every(r => oldRegions.some(old => old.id === r.id && old.x === r.x && old.y === r.y && old.width === r.width && old.height === r.height))) return imageId
+    if (!await database.assets.where('hash').equals(asset.hash).count()) await database.assets.put(asset)
     await database.images.put({ id: imageId, deckId, assetHash: asset.hash, createdAt: image?.createdAt ?? now, updatedAt: now, width: asset.width, height: asset.height, mimeType: asset.mimeType })
     const oldCards = await database.cards.where('imageId').equals(imageId).toArray()
     for (const old of oldRegions) if (!next.some(r => r.id === old.id)) {
