@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowDownToLine, ArrowRight, BookOpen, Check, ChevronRight, CircleHelp, Ellipsis, Folder, FolderPlus, ImagePlus, LayoutDashboard, Menu, Moon, MoreHorizontal, Plus, Settings2, ShieldCheck, Sun, Trash2, X } from 'lucide-react'
+import { ArrowDownToLine, ArrowRight, BookOpen, Check, ChevronRight, CircleHelp, Ellipsis, Folder, FolderPlus, ImagePlus, LayoutDashboard, Moon, MoreHorizontal, Plus, Settings2, ShieldCheck, Sun, Trash2, X } from 'lucide-react'
 import { db, defaultPreferences, deleteDeck, initialize, moveImage, removeImage, saveDeck, updatePreferences } from './db'
 import { descendants, reviewQueue, type Deck, type ImageRecord } from './domain'
 import { prepareImage } from './images'
@@ -16,7 +16,7 @@ import { BrandMark } from './components/BrandMark'
 import { applyAppearance } from './appearance'
 import { StartupScreen } from './components/StartupScreen'
 import { DeckNavigation } from './components/DeckNavigation'
-import { useEdgeSwipe } from './useEdgeSwipe'
+import { FolderBreadcrumbs } from './components/FolderBreadcrumbs'
 
 type View = 'dashboard' | 'library' | 'create' | 'settings'
 function deckPath(decks: Deck[], id: string): string {
@@ -32,7 +32,6 @@ export default function App() {
   const [draftVersion, setDraftVersion] = useState(0)
   const [session, setSession] = useState<{ ids: string[]; name: string } | null>(null)
   const [deckDialog, setDeckDialog] = useState<{ deck?: Deck; parentId: string | null } | null>(null)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [toast, setToast] = useState<{ message: string; error: boolean } | null>(null)
   const [processing, setProcessing] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -74,10 +73,19 @@ export default function App() {
     return { stats, images, sortedDecks, deckStats, inFolder: (data?.cards ?? []).filter(c => scopedImageIds.has(c.imageId)).length }
   }, [data, root, clock])
   const { stats, images, sortedDecks, deckStats, inFolder } = library
-  const selectDeck = (id: string | null) => { void run(() => db.preferences.update('app', { selectedDeckId: id })); setMenuOpen(false) }
-  const navigate = (next: View) => { setView(next); setMenuOpen(false) }
-  const openMenu = useCallback(() => setMenuOpen(true), [])
-  useEdgeSwipe(!!data && cloud.loaded && !cloud.blocked && !bootError && !session && !deckDialog && !processing && !dragging && !menuOpen, openMenu)
+  const selectDeck = (id: string | null) => { void run(() => db.preferences.update('app', { selectedDeckId: id })) }
+  const navigate = (next: View) => { setView(next) }
+  const openView = (next: View) => {
+    if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return
+    setDraft(null); navigate(next)
+  }
+  const openMobileView = (next: 'dashboard' | 'library') => {
+    if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return
+    setDraft(null)
+    // The library tab is the entry point to all folders on mobile.
+    if (next === 'library') selectDeck(null)
+    navigate(next); window.scrollTo(0, 0)
+  }
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 15000)
     const connectivity = () => { setOnline(navigator.onLine); setClock(Date.now()) }
@@ -128,19 +136,20 @@ export default function App() {
   const cloudMessage = !cloud.authReady ? 'Anmeldung wird geprüft …' : !online ? 'Verbinde dich mit dem Internet, um deine Karten zu laden.' : cloud.status?.error ? 'Deine Karten konnten noch nicht geladen werden.' : !cloud.session && cloud.connection ? 'Melde dich an, um deine Karten zu laden.' : !cloud.connection ? 'Verbinde dieses Gerät, um deine Karten zu laden.' : 'Karten werden synchronisiert …'
 
   return <div className={`app-shell ${session ? 'review-shell' : ''}`}>
-    {!session && <><div className={`sidebar-scrim ${menuOpen ? 'visible' : ''}`} onClick={() => setMenuOpen(false)} /><aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
+    {!session && <aside className="sidebar">
       <a className="brand" href="#" onClick={e => { e.preventDefault(); if (!draft || confirm('Ungespeicherten Entwurf schließen?')) { setDraft(null); navigate('dashboard') } }}><BrandMark />occlude<span className="brand-dot">.</span></a>
       <nav className="primary-nav" aria-label="Hauptnavigation"><button className={view === 'dashboard' && !draft ? 'active' : ''} onClick={() => { if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('dashboard') }}><LayoutDashboard size={18} />Übersicht</button><button className={view === 'library' && !draft ? 'active' : ''} onClick={() => { if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('library') }}><BookOpen size={18} />Bibliothek<span className="nav-count">{data.cards.length}</span></button></nav>
       <div className="sidebar-section-heading"><span>Ordner</span><button className="icon-button" aria-label="Ordner erstellen" onClick={() => setDeckDialog({ parentId: root })}><Plus size={16} /></button></div>
       <DeckNavigation decks={sortedDecks} selectedId={root} onSelect={selectDeck} onCreate={() => setDeckDialog({ parentId: root })} />
       <div className="sidebar-bottom"><button className={`settings-link ${view === 'settings' ? 'active' : ''}`} onClick={() => { if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('settings') }}><Settings2 size={18} />Einstellungen<ChevronRight size={15} /></button></div>
-    </aside></>}
+    </aside>}
     <main className="main-panel" onDragOver={e => { if (e.dataTransfer.types.includes('Files') && !session) { e.preventDefault(); setDragging(true) } }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }} onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f && !deckDialog) void acceptFile(f) }}>
-      {!session && <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Menü öffnen" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><Menu size={22} /></button><span className="topbar-brand"><BrandMark />occlude<span>.</span></span><strong className="desktop-view-name">{draft ? 'Editor' : ({ dashboard: 'Übersicht', library: 'Bibliothek', create: 'Neue Karte', settings: 'Einstellungen' })[view]}</strong></div><button className="sync-indicator" onClick={() => { if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('settings') }} aria-label={`Cloud-Status: ${cloudLabel}`} title={cloudLabel}><span className="status-dot" /><span>{cloudLabel}</span></button></header>}
+      {!session && <header className="topbar"><div className="breadcrumb"><strong>{draft ? 'Editor' : ({ dashboard: 'Übersicht', library: 'Bibliothek', create: 'Neue Karte', settings: 'Einstellungen' })[view]}</strong></div><button className="sync-indicator" onClick={() => openView('settings')} aria-label={`Cloud-Status: ${cloudLabel}`} title={cloudLabel}><span className="status-dot" /><span>{cloudLabel}</span></button></header>}
       <input ref={fileInput} type="file" className="sr-only" aria-label="Bild hochladen" accept="image/png,image/jpeg,image/webp" onChange={e => { const file = e.target.files?.[0]; if (file) void acceptFile(file); e.target.value = '' }} />
       <div className={`main-content ${session ? 'session-content' : ''}`}>
-      {session ? <Review ids={session.ids} deckName={session.name} onClose={() => { setSession(null); setClock(Date.now()) }} onError={onError} /> : draft ? <Editor key={draftVersion} draft={draft} decks={sortedDecks} onClose={() => setDraft(null)} onError={onError} onSaved={id => { selectDeck(id); setDraft(null); setView('library'); setToast({ message: 'Gespeichert', error: false }) }} /> : view === 'settings' ? <Settings prefs={prefs} run={run} cloud={cloud} onError={onError} /> : view === 'create' ? <><div className="page-heading"><h1>Neue Karte</h1></div><UploadArea onUpload={() => fileInput.current?.click()} large /></> : <>
-        <div className="page-heading"><h1>{view === 'library' ? 'Bibliothek' : 'Übersicht'}</h1><button className="button primary create-top" onClick={() => navigate('create')}><Plus size={18} />Karte erstellen</button></div>
+      {session ? <Review ids={session.ids} deckName={session.name} onClose={() => { setSession(null); setClock(Date.now()) }} onError={onError} /> : draft ? <Editor key={draftVersion} draft={draft} decks={sortedDecks} onClose={() => setDraft(null)} onError={onError} onSaved={id => { selectDeck(id); setDraft(null); setView('library'); setToast({ message: 'Gespeichert', error: false }) }} /> : view === 'settings' ? <Settings prefs={prefs} run={run} cloud={cloud} onError={onError} /> : view === 'create' ? <><div className="page-heading"><h1>Neue Karte</h1><button className="icon-button mobile-settings" aria-label="Einstellungen" title={cloudLabel} onClick={() => openView('settings')}><Settings2 size={22} /></button></div><UploadArea onUpload={() => fileInput.current?.click()} large /></> : <>
+        <div className="page-heading"><h1>{view === 'library' ? 'Bibliothek' : 'Übersicht'}</h1><div className="page-actions"><button className="button primary create-top" aria-label="Karte erstellen" onClick={() => navigate('create')}><Plus size={18} /><span>Karte erstellen</span></button><button className="icon-button mobile-settings" aria-label="Einstellungen" title={cloudLabel} onClick={() => openView('settings')}><Settings2 size={22} /></button></div></div>
+        {view === 'library' && <FolderBreadcrumbs decks={sortedDecks} selectedId={root} onSelect={selectDeck} />}
         {view === 'dashboard' && <>
           <StudySummary ready={stats.queue.length} total={data.cards.length} inFolder={inFolder} awaitingCloud={awaitingCloud} cloudMessage={cloudMessage} onReview={beginReview} onLibrary={() => { selectDeck(null); navigate('library') }} onCloud={() => navigate('settings')} />
           {data.cards.length > 0 && <div className="stats-grid"><Stat label="Fällig" value={stats.due.length} /><Stat label="Neu" value={stats.fresh.length} /><Stat label="Heute gelernt" value={stats.today} /></div>}
@@ -159,6 +168,10 @@ export default function App() {
       </div>
       {(dragging || processing) && <div className="drop-overlay" role="status"><div><ImagePlus size={44} /><h2>{processing ? 'Dein Bild wird vorbereitet …' : 'Hier loslassen. Gleich loslernen.'}</h2><p>PNG, JPEG oder WebP · bis zu 15 MB</p></div></div>}
     </main>
+    {!session && <nav className="mobile-tabbar" aria-label="Mobile Navigation">
+      <button aria-current={view === 'dashboard' && !draft ? 'page' : undefined} onClick={() => openMobileView('dashboard')}><LayoutDashboard size={23} aria-hidden="true" /><span>Übersicht</span></button>
+      <button aria-current={view === 'library' && !draft ? 'page' : undefined} onClick={() => openMobileView('library')}><BookOpen size={23} aria-hidden="true" /><span>Bibliothek</span></button>
+    </nav>}
     {toast && <div className={`toast ${toast.error ? 'error' : ''}`} role={toast.error ? 'alert' : 'status'}>{toast.error ? <CircleHelp size={20} /> : <Check size={20} />}<span>{toast.message}</span><button className="icon-button" aria-label="Meldung schließen" onClick={() => setToast(null)}><X size={17} /></button></div>}
     {deckDialog && <DeckDialog decks={sortedDecks} initial={deckDialog} onClose={() => setDeckDialog(null)} onError={onError} onSaved={id => { selectDeck(id); setDeckDialog(null) }} />}
   </div>

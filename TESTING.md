@@ -224,10 +224,10 @@ browser scenarios passed after this change. `e2e/deck-navigation.spec.ts` create
 three hierarchy levels through the real folder UI, checks independent nested
 collapse, leaf folders without toggle buttons, keyboard Space/Enter activation,
 and unchanged selection while a parent is collapsed. Reload preserves the folded
-view even when the selected folder is inside it. Mobile checks verify that arrow
-buttons keep the drawer open, name buttons select/close it, and selecting a hidden
-descendant from the dashboard reveals its ancestors. Desktop and mobile captures
-were visually inspected; the mobile capture disables drawer transition animations.
+view even when the selected folder is inside it. Selecting a hidden descendant
+from the dashboard reveals its ancestors. The responsive check switches to the
+mobile bottom bar and back to the desktop sidebar without losing that selection.
+The desktop capture was visually inspected.
 Expansion is a local browser preference and does not enqueue cloud operations.
 
 ## Bottom safe area and native navigation colors
@@ -268,26 +268,30 @@ an unseeded database checks that upload stays unavailable, the slow-start help
 appears, and releasing the reader completes initialization automatically. Cached
 workspaces still open while another reader is held; no Auth/cloud wait is added.
 
-## Mobile edge swipe
+## Mobile bottom navigation
 
 Production build, all 72 unit/component/SQL/integration checks and all 27 Chromium
-browser scenarios passed with the edge-swipe handler enabled.
+browser scenarios passed with the new mobile navigation.
 
-`e2e/edge-swipe.spec.ts` uses Chromium's trusted `Input.dispatchTouchEvent` input
-with Pixel 7 and iPhone 13 profiles, so browser panning and touch cancellation
-participate in the checks. A right swipe starting within the left 32 CSS pixels
-opens the drawer after 56 pixels of predominantly horizontal movement. Mid-page,
-short, leftward, vertical, canceled and multi-touch gestures must leave it closed.
-The tests verify actual vertical scrolling, opening after scrolling, menu-button
-and backdrop taps, modal exclusion, and no hidden drawer during a review.
+`e2e/mobile-navigation.spec.ts` checks Pixel 7 and iPhone 13 profiles with native
+browser safe-area emulation (24px top / 34px bottom). Exactly two bottom actions,
+Übersicht and Bibliothek, replace the mobile sidebar and logo header. The library
+entry opens all top-level folders; tests create nested folders through the real
+UI, return through the folder path, and re-tap Bibliothek to reach the root.
+Long folder paths reveal the current folder without scrolling the document.
+Settings and creation remain accessible through compact heading actions.
 
-Editor checks draw and save an additional mask, pan from both the canvas edge and
-center, pinch to 200%, and open/dismiss the menu without losing the unsaved draft.
-Tool selection/reset use normal control clicks between the raw touch sequences.
-The drawer capture was visually inspected. The handler adds no overlay or global
-touch-action restriction; non-passive movement listeners exist only during a
-possible edge swipe. No network sync is needed to open the menu.
+The tests switch themes, scroll settings to the end, check the last action and
+notifications stay above the bar, and exercise the 320px layout. Existing
+safe-area screenshot pixel checks still cover light/dark, cold launch and review.
+Landscape mobile layouts use the bar; resizing to a wide desktop restores the
+sidebar, its folder expansion and current selection. Mobile light/dark captures
+were visually inspected. No custom edge-swipe handler remains.
 
-These mobile profiles do not test Safari or physical Android/iOS system gestures.
-The OS can reserve the physical edge for Back; start just inside that edge or use
-the existing menu button when the OS intercepts it.
+Editor checks use trusted Chromium `Input.dispatchTouchEvent` drawing, panning
+and pinch input, plus normal control clicks between raw touch sequences. Both
+tabs must preserve an unsaved draft when its discard dialog is dismissed.
+Accepting discard leaves the saved cards untouched; a subsequent edit/save adds
+a card normally. Reviews hide the bar, keep answer buttons above the safe area,
+and restore the tabs when exited. All external HTTP requests are mocked/aborted.
+These are Chromium mobile profiles, not physical-device or Safari checks.

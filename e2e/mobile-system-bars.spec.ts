@@ -33,7 +33,6 @@ test(`bottom safe area follows the app appearance across scroll and a cold dark 
     expect(manifest.id).toBe('/')
     expect(manifest.theme_color).toBe('#f5f5f7')
     expect(manifest.background_color).toBe('#f5f5f7')
-    await page.getByRole('button', { name: 'Menü öffnen' }).click()
     await page.getByRole('button', { name: 'Einstellungen', exact: true }).click()
     for (const [appearance, scheme, background, rgb] of [
       ['Dunkel', 'dark', '#000000', [0, 0, 0]],

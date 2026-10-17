@@ -137,7 +137,6 @@ test('file validation, settings and mobile navigation', async ({ page }) => {
   await page.getByLabel('Bild hochladen').setInputFiles({ name: 'unsafe.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg/>') })
   await expect(page.getByRole('alert')).toContainText('PNG-, JPEG- oder WebP')
   await page.getByRole('button', { name: 'Meldung schließen' }).click()
-  await page.getByRole('button', { name: 'Menü öffnen' }).click()
   await page.getByRole('button', { name: 'Einstellungen', exact: true }).click()
   await page.getByRole('spinbutton', { name: 'Neue Karten pro Tag' }).fill('5')
   await page.getByRole('button', { name: 'Dunkel', exact: true }).click()
