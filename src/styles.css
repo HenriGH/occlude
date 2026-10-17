@@ -43,9 +43,9 @@
   --shadow: 0 8px 30px #0002;
 }
 * { box-sizing: border-box; }
-html { min-width: 320px; min-height: 100%; scroll-padding-top: calc(72px + var(--safe-top)); }
+html { min-width: 320px; min-height: 100%; min-height: 100dvh; scroll-padding-top: calc(72px + var(--safe-top)); }
 body { margin: 0; min-height: 100vh; min-height: 100dvh; background: var(--bg); color: var(--ink); }
-#root, .app-shell { min-height: 100vh; min-height: 100dvh; }
+#root, .app-shell { min-height: 100vh; min-height: 100dvh; background: var(--bg); }
 button, input, select { font: inherit; }
 button, a, input, select { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; border: 0; background: none; color: inherit; }

@@ -46,10 +46,13 @@ export default function App() {
   }, [])
   const run = useCallback(async (action: () => Promise<unknown>) => { try { await action() } catch (e) { onError(e) } }, [onError])
   useEffect(() => { initialize().catch(e => setBootError(e instanceof Error ? e.message : 'Der lokale Speicher ist nicht verfügbar.')) }, [])
-  const data = useLiveQuery(async () => {
+  const data = useLiveQuery(() => db.transaction('r', [db.decks, db.images, db.cards, db.reviews, db.preferences], async () => {
     const [decks, images, cards, reviews, preferences] = await Promise.all([db.decks.toArray(), db.images.toArray(), db.cards.toArray(), db.reviews.toArray(), db.preferences.get('app')])
-    return { decks: decks.sort((a, b) => b.updatedAt - a.updatedAt), images, cards, reviews, prefs: preferences ?? defaultPreferences }
-  })
+    // Do not expose actions against an empty pre-initialization snapshot. Read
+    // the seed folder and its preferences atomically, without waiting on Auth.
+    if (!preferences) return undefined
+    return { decks: decks.sort((a, b) => b.updatedAt - a.updatedAt), images, cards, reviews, prefs: preferences }
+  }))
   const prefs = data?.prefs ?? defaultPreferences
   const decks = data?.decks ?? []
   const selected = decks.find(d => d.id === prefs.selectedDeckId)

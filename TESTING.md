@@ -229,3 +229,41 @@ buttons keep the drawer open, name buttons select/close it, and selecting a hidd
 descendant from the dashboard reveals its ancestors. Desktop and mobile captures
 were visually inspected; the mobile capture disables drawer transition animations.
 Expansion is a local browser preference and does not enqueue cloud operations.
+
+## Bottom safe area and native navigation colors
+
+Production build, all 72 unit/component/SQL/integration checks and all 23 Chromium
+browser scenarios passed. `e2e/mobile-system-bars.spec.ts` uses Pixel 7 and iPhone
+13 profiles with Chromium's `Emulation.setSafeAreaInsetsOverride`, providing real
+browser `env(safe-area-inset-*)` values (24px top / 34px bottom). It checks that
+standalone mode and app identity stay unchanged and that the active installation
+manifest follows the app appearance, including dark Occlude on a light OS. Both
+manifest variants must retain identical IDs, scope, start URL and icons.
+
+The new scenarios switch between light/dark within a light OS profile, scroll
+settings to the bottom, and decode actual viewport screenshots to verify the
+bottom 34px of the page canvas. Dark reloads hold application scripts so the same
+pixel check exercises bootstrap painting before React and IndexedDB are ready.
+Review/reveal checks also keep the rating buttons above the emulated safe area.
+The dark mobile capture was visually inspected. No live Auth requests are sent.
+
+These are page-canvas checks, not screenshots of Android's native gesture bar.
+Chromium's installed-app code can source a fitted navigation bar from installation
+colors instead of the live page theme color; see
+[WebappIntentDataProvider](https://github.com/chromium/chromium/blob/main/chrome/android/java/src/org/chromium/chrome/browser/webapps/WebappIntentDataProvider.java)
+and
+[CustomTabNavigationBarController](https://github.com/chromium/chromium/blob/main/chrome/android/java/src/org/chromium/chrome/browser/customtabs/features/CustomTabNavigationBarController.java).
+The user chose to retain the status bar, so fullscreen is not requested. Android
+may cache old installation colors until its installed-app metadata updates. The
+page cannot force an immediate native APK update, and browser versions differ in
+support for coloring fitted native bars. A physical installed-app check after
+deployment is still needed; these tests do not claim control over pixels outside
+the web viewport.
+
+The full browser run also exposed an initial seed race: upload actions could
+appear while the initial preferences/default-folder transaction was still
+pending. The library query now reads its metadata in one read-only transaction
+and returns no ready workspace until preferences exist. A real held reader on
+an unseeded database checks that upload stays unavailable, the slow-start help
+appears, and releasing the reader completes initialization automatically. Cached
+workspaces still open while another reader is held; no Auth/cloud wait is added.

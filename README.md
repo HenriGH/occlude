@@ -26,6 +26,14 @@ web manifest with PNG icons rendered from the existing logo. Browser theme color
 follow the selected appearance, which is also applied before the app starts to
 avoid a white launch flash. Installation does not yet enable offline restarts.
 
+The page canvas, body, app root and color-scheme metadata use the selected
+appearance from the first paint. The active installation manifest also follows
+the app appearance, including when Occlude is dark and Android itself is light.
+Both light/dark manifests keep the same app ID, scope, start URL and icons;
+standalone mode keeps the system status bar. Android/Chrome still controls the
+native navigation area and may retain old colors until its installed-app metadata
+updates. A page theme switch cannot force an immediate native APK update.
+
 The default logo uses the white outline and pale-green occlusion mark. Browser
 and installation icons use this version on a neutral dark background for contrast
 on any home screen. In-app branding still follows the selected light/dark

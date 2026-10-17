@@ -31,6 +31,33 @@ async function releaseStorage(page: Page) {
   await page.evaluate(() => (window as typeof window & { releaseStorage: () => Promise<void> }).releaseStorage())
 }
 
+test('a first launch waits for local seed preferences before exposing upload actions', async ({ page, context }) => {
+  await page.goto('/')
+  await expect(page.getByRole('navigation', { name: 'Ordner', exact: true }).getByRole('button', { name: 'Mein Studium', exact: true })).toBeVisible()
+  // Leave a real v2 database before first-launch seeding, with a reader that
+  // permits empty reads but holds initialization's write transaction queued.
+  await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('occlude'); r.onsuccess = () => resolve(r.result) })
+    await new Promise<void>((resolve, reject) => {
+      const tx = database.transaction(['decks', 'preferences'], 'readwrite')
+      tx.objectStore('decks').clear(); tx.objectStore('preferences').clear()
+      tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error)
+    })
+    database.close()
+  })
+  await holdStorage(page, 'readonly')
+  const app = await context.newPage()
+  try {
+    await app.goto('/')
+    await expect(app.getByRole('status')).toContainText('Dein Lernraum wird vorbereitet')
+    await expect(app.getByRole('alert')).toContainText('schließe den Tab', { timeout: 8500 })
+    await expect(app.getByLabel('Bild hochladen')).toHaveCount(0)
+  } finally { await releaseStorage(page) }
+  await expect(app.getByRole('navigation', { name: 'Ordner', exact: true }).getByRole('button', { name: 'Mein Studium', exact: true })).toHaveAttribute('aria-current', 'page')
+  await expect(app.getByLabel('Bild hochladen')).toHaveCount(1)
+  await expect(app.getByRole('alert')).toHaveCount(0)
+})
+
 test('a second instance starts with cached cards while the browser holds a readonly transaction', async ({ page, context }) => {
   await createLocalLibrary(page)
   await holdStorage(page, 'readonly')
