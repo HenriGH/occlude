@@ -53,7 +53,7 @@ export async function cloudFixture(page: Page) {
       const p = op.payload, shared = { user_id: owner, version: op.baseVersion + 1, deleted_at: null }
       if (op.kind === 'image.put') {
         cloud.snapshot.images = [{ ...shared, id: p.id, deck_id: p.deckId, content_hash: p.assetHash, width: p.width, height: p.height, mime_type: p.mimeType, storage_path: `${owner}/${p.assetHash}`, created_at: new Date(p.createdAt).toISOString(), updated_at: new Date(p.updatedAt).toISOString() }]
-        cloud.snapshot.regions = p.regions.map((r: any) => ({ ...shared, id: r.id, image_id: r.imageId, x: r.x, y: r.y, width: r.width, height: r.height }))
+        cloud.snapshot.regions = p.regions.map((r: any) => ({ ...shared, id: r.id, image_id: r.imageId, x: r.x, y: r.y, width: r.width, height: r.height, label: r.label ?? '' }))
         cloud.snapshot.cards = p.cards.map((c: any) => ({ ...shared, id: c.id, image_id: c.imageId, region_id: c.regionId, created_at: new Date(c.createdAt).toISOString() }))
       } else if (op.kind === 'review.add') cloud.snapshot.reviews.push({ ...shared, id: p.id, card_id: p.cardId, rating: p.rating, reviewed_at: new Date(p.reviewedAt).toISOString(), scheduler_version: p.schedulerVersion })
       else throw new Error(`Unexpected operation: ${op.kind}`)
@@ -100,10 +100,10 @@ export async function seedWorkspace(page: Page, expired: boolean) {
     database.close()
     const shared = { user_id: owner, version: 1, deleted_at: null }
     return {
-      schemaVersion: 1, profile: null, reviews: [],
+      schemaVersion: 1, features: ['region-labels'], profile: null, reviews: [],
       decks: decks.map(d => ({ ...shared, id: d.id, name: d.name, parent_id: d.parentId, created_at: new Date(d.createdAt).toISOString(), updated_at: new Date(d.updatedAt).toISOString() })),
       images: images.map(i => ({ ...shared, id: i.id, deck_id: i.deckId, content_hash: i.assetHash, width: i.width, height: i.height, mime_type: i.mimeType, storage_path: `${owner}/${i.assetHash}`, created_at: new Date(i.createdAt).toISOString(), updated_at: new Date(i.updatedAt).toISOString() })),
-      regions: regions.map(r => ({ ...shared, id: r.id, image_id: r.imageId, x: r.x, y: r.y, width: r.width, height: r.height })),
+      regions: regions.map(r => ({ ...shared, id: r.id, image_id: r.imageId, x: r.x, y: r.y, width: r.width, height: r.height, label: r.label ?? '' })),
       cards: cards.map(c => ({ ...shared, id: c.id, image_id: c.imageId, region_id: c.regionId, created_at: new Date(c.createdAt).toISOString() })),
     }
   }, { owner, email: user.email, expired })

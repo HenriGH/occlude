@@ -189,3 +189,30 @@ These tests cover controlled storage contention and recovery in Chromium; actual
 Android browser/installed-app lifecycle behavior and Safari require a device
 check after deployment. A slow-start message is conditional because a delayed
 local read alone cannot identify which process, if any, holds up storage.
+
+## Mask questions and white default icons
+
+Validation on 2026-10-17: build passed; all 72 unit/component/SQL/integration
+tests and all 18 Chromium browser scenarios passed against the production build.
+
+Local transaction tests cover label-only edits, whitespace normalization,
+unchanged-save no-ops, invalid text and explicit removal, preserving card IDs,
+schedules and immutable review events. Component checks ensure only the current
+mask's question is shown during review and markup in labels remains plain text.
+Actual PostgreSQL tests upgrade a populated initial schema without losing its
+deck/card/review, validate labels atomically, preserve omitted text for old clients,
+and enforce the existing tenant boundary. Two independent databases synchronize
+offline label edits and removal through the SQL RPC without another image upload.
+An old-backend fixture proves labelled work stays queued until support appears.
+
+`e2e/mask-questions.spec.ts` adds mobile editing, save/reload, question/reveal and
+removal checks. The review screenshot was visually inspected. Browser and every
+installation icon are decoded into a canvas in both system appearances; their
+white contour, pale-green mark and neutral dark background are checked directly.
+PNG generation uses `scripts/generate-icons.mjs` and the default white SVG. The
+new asset URLs include a version query so clients can fetch the revised icons.
+
+The migration has only been applied to local PostgreSQL fixtures. An existing
+Supabase project needs `202610170002_mask_labels.sql` run once as described in
+supabase/SETUP.md. Physical launcher icon-refresh behavior remains OS-dependent;
+no hosted deployment or dashboard update is claimed by these checks.

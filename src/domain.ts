@@ -3,7 +3,8 @@ import { createEmptyCard, fsrs, Rating, type Card } from 'ts-fsrs'
 export const SCHEDULER_VERSION = 'ts-fsrs@5.4.2/default/fuzz-off'
 export const scheduler = fsrs({ enable_fuzz: false })
 export type Grade = Rating.Again | Rating.Hard | Rating.Good | Rating.Easy
-export interface Rect { id: string; x: number; y: number; width: number; height: number }
+export const MAX_MASK_LABEL_LENGTH = 200
+export interface Rect { id: string; x: number; y: number; width: number; height: number; label?: string }
 export interface Deck { id: string; parentId: string | null; name: string; createdAt: number; updatedAt: number }
 export interface Asset { hash: string; blob: Blob; width: number; height: number; mimeType: string }
 export interface ImageRecord { id: string; deckId: string; assetHash: string; createdAt: number; updatedAt: number; width?: number; height?: number; mimeType?: string }

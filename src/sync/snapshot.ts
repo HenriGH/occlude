@@ -1,10 +1,11 @@
 import { createEmptyCard } from 'ts-fsrs'
-import { descendants, replay, SCHEDULER_VERSION, validRect, type Deck, type Flashcard, type ImageRecord, type Preferences, type Region, type ReviewEvent } from '../domain'
+import { descendants, MAX_MASK_LABEL_LENGTH, replay, SCHEDULER_VERSION, validRect, type Deck, type Flashcard, type ImageRecord, type Preferences, type Region, type ReviewEvent } from '../domain'
 import type { OccludeDB } from '../db'
 import { versionKey } from './model'
 
 interface Versioned<T> { data: T; version: number; deleted: boolean }
 export interface Snapshot {
+  regionLabels: boolean
   decks: Versioned<Deck>[]; images: Versioned<ImageRecord>[]; regions: Versioned<Region>[]
   cards: Versioned<Omit<Flashcard, 'schedule'>>[]; reviews: ReviewEvent[]
   profile: { version: number; settings: Pick<Preferences, 'newLimit' | 'dayBoundary'> } | null
@@ -43,7 +44,8 @@ export function parseSnapshot(input: unknown, owner: string): Snapshot {
     return wrap(r, { id: uuid(r.id), deckId: uuid(r.deck_id), assetHash: hash, width, height, mimeType, createdAt: timestamp(r.created_at), updatedAt: timestamp(r.updated_at) })
   })
   const regions = rows('regions').map(r => {
-    const region = { id: uuid(r.id), imageId: uuid(r.image_id), x: num(r.x), y: num(r.y), width: num(r.width), height: num(r.height) }
+    if (r.label !== undefined && (typeof r.label !== 'string' || r.label.length > MAX_MASK_LABEL_LENGTH)) return fail()
+    const region = { id: uuid(r.id), imageId: uuid(r.image_id), x: num(r.x), y: num(r.y), width: num(r.width), height: num(r.height), ...(r.label === undefined ? {} : { label: r.label as string }) }
     if (!validRect(region)) return fail()
     return wrap(r, region)
   })
@@ -63,7 +65,7 @@ export function parseSnapshot(input: unknown, owner: string): Snapshot {
     regions.some(r => !images.some(i => i.data.id === r.data.imageId)) ||
     cards.some(c => !regions.some(r => r.data.id === c.data.regionId && r.data.imageId === c.data.imageId)) ||
     reviews.some(e => !cards.some(c => c.data.id === e.cardId))) return fail()
-  return { decks, images, regions, cards, reviews, profile }
+  return { decks, images, regions, cards, reviews, profile, regionLabels: Array.isArray(root.features) && root.features.includes('region-labels') }
 }
 
 // Caller owns a write transaction over metadata, reviews, outbox and syncMeta.
@@ -79,6 +81,7 @@ export async function mergeSnapshot(database: OccludeDB, snapshot: Snapshot) {
   const versions = new Map(meta.map(m => [m.key, m.value]))
   const nextMeta = new Map<string, unknown>()
   const remember = (key: string, value: unknown) => { if (versions.get(key) !== value) nextMeta.set(key, value) }
+  remember('regionLabels', snapshot.regionLabels)
   const connection = versions.get('connection') as { userId: string } | undefined
   if (connection) for (const image of snapshot.images) {
     // The RPC only publishes metadata after the immutable Storage object exists.

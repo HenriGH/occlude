@@ -23,6 +23,32 @@ it('seeds exactly one workspace when two instances initialize for the first time
 })
 
 describe('transactional screenshot-to-card workflow', () => {
+  it('persists label-only edits and removals without replacing cards or their review history', async () => {
+    const imageId = await saveImage(asset, deck, [rect('a')], undefined, database)
+    const card = (await database.cards.toArray())[0]
+    await rateCard(card.id, Rating.Good, Date.now(), 'review', database)
+    const before = await database.cards.get(card.id)
+    await database.syncMeta.put({ key: 'connection', value: { userId: 'owner', email: 'test@example.test', locked: false } })
+    await saveImage(asset, deck, [{ ...rect('a'), label: '  Welche Struktur?  ' }], imageId, database)
+    expect((await database.regions.get('a'))?.label).toBe('Welche Struktur?')
+    expect(await database.cards.get(card.id)).toEqual(before)
+    expect(await database.reviews.count()).toBe(1)
+    expect((await database.outbox.toArray())[0].payload.regions).toEqual([expect.objectContaining({ label: 'Welche Struktur?' })])
+    await saveImage(asset, deck, [{ ...rect('a'), label: 'Welche Struktur?' }], imageId, database)
+    expect(await database.outbox.count()).toBe(1)
+    await saveImage(asset, deck, [{ ...rect('a'), label: '' }], imageId, database)
+    database.close(); await database.open()
+    expect((await database.regions.get('a'))?.label).toBe('')
+    expect(await database.outbox.count()).toBe(2)
+    expect(await database.cards.get(card.id)).toEqual(before)
+  })
+  it('rejects invalid label data before making any local changes', async () => {
+    for (const label of ['x'.repeat(201), null, 123]) {
+      await expect(saveImage(asset, deck, [{ ...rect('a'), label: label as string }], undefined, database)).rejects.toThrow('Maskenfrage')
+    }
+    expect(await database.images.count()).toBe(0)
+    expect(await database.cards.count()).toBe(0)
+  })
   it('creates exactly three independent cards with one underlying image and one Blob', async () => {
     const id = await saveImage(asset, deck, ['a', 'b', 'c'].map(rect), undefined, database)
     expect(await database.images.count()).toBe(1)

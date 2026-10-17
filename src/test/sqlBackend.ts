@@ -1,9 +1,9 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { PGlite } from '@electric-sql/pglite'
 
 // Supabase supplies these schemas/roles in production. Tests use real PostgreSQL
 // RLS/transactions with a minimal Auth/Storage schema, not the hosted HTTP services.
-export async function sqlBackend() {
+export async function sqlBackend({ through }: { through?: string } = {}) {
   const pg = new PGlite()
   await pg.exec(`
     create role anon; create role authenticated;
@@ -16,6 +16,8 @@ export async function sqlBackend() {
     grant usage on schema public,auth,storage to authenticated,anon;
     grant select,insert,update,delete on storage.objects to authenticated;
   `)
-  await pg.exec(await readFile('supabase/migrations/202610170001_initial_sync.sql', 'utf8'))
+  for (const migration of (await readdir('supabase/migrations')).filter(name => name.endsWith('.sql') && (!through || name <= through)).sort()) {
+    await pg.exec(await readFile(`supabase/migrations/${migration}`, 'utf8'))
+  }
   return pg
 }

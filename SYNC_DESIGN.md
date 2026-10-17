@@ -48,6 +48,20 @@ slow read does not prove another tab is responsible. Pending requests continue
 and the app renders automatically when the blocker releases. Reload never clears
 local data, the owner binding or queued operations; no storage or Web Lock is stolen.
 
+Optional mask questions travel as `regions[].label` inside the existing atomic
+`image.put` command. A label-only edit keeps card identity and review history;
+unchanged labels remain local no-ops and the original image is not uploaded again.
+The additive `202610170002_mask_labels.sql` migration adds the bounded text column
+and advertises `region-labels` in the snapshot's `features`, keeping schemaVersion
+1 compatible with old clients. An omitted label preserves server text; an explicit
+empty string clears it. This lets older installed clients edit geometry without
+silently erasing questions on the server.
+
+Snapshots cache feature support locally. A labelled command checks support before
+upload/apply if it has not already been confirmed; subsequent commands need no
+extra feature query. An old backend produces a migration instruction and retains
+the pending operation. Retry checks again after the migration becomes available.
+
 Transient failures use durable capped
 exponential backoff with jitter (about 1 second to 5 minutes); manual retry resets
 the delay. A connection failure stops the current batch instead of repeating the

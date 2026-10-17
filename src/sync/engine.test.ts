@@ -65,6 +65,56 @@ afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllGlobals(); for (const 
 afterAll(async () => { await pg?.close() })
 
 describe('local outbox + actual PostgreSQL RPC integration', () => {
+  it('syncs offline question edits and removal across devices without changing review history or uploading the image again', async () => {
+    const a = await device(), imageId = await addImage(a.db)
+    await a.engine.connect('student@example.test')
+    const image = (await a.db.images.get(imageId))!, asset = (await a.db.assets.get(image.assetHash))!
+    const card = (await a.db.cards.toArray())[0]
+    await rateCard(card.id, 3, clock, crypto.randomUUID(), a.db)
+    await a.engine.sync()
+    const before = await a.db.cards.get(card.id)
+    a.transport.online = false
+    const region = (await a.db.regions.toArray())[0]
+    await saveImage(asset, image.deckId, [{ ...region, label: 'Welche Struktur?' }], imageId, a.db)
+    await a.engine.sync()
+    expect(await a.db.outbox.count()).toBe(1)
+    a.db.close(); await a.db.open()
+    expect((await a.db.regions.get(region.id))?.label).toBe('Welche Struktur?')
+    const upload = vi.spyOn(a.transport, 'upload')
+    a.transport.online = true
+    await a.engine.retry()
+    expect(upload).not.toHaveBeenCalled()
+    const b = await device(); await b.engine.connect('student@example.test')
+    expect((await b.db.regions.get(region.id))?.label).toBe('Welche Struktur?')
+    expect(await b.db.cards.get(card.id)).toEqual(before)
+    const cached = await b.engine.asset(imageId)
+    await saveImage(cached, image.deckId, [{ ...region, label: '' }], imageId, b.db)
+    await b.engine.sync(); await a.engine.sync()
+    expect((await a.db.regions.get(region.id))?.label).toBe('')
+    expect(await a.db.cards.get(card.id)).toEqual(before)
+    expect(await a.db.reviews.count()).toBe(1)
+    expect(await a.db.outbox.count()).toBe(0)
+  })
+  it('keeps labelled changes queued against an old backend until the label migration is available', async () => {
+    const a = await device(), imageId = await addImage(a.db)
+    await a.engine.connect('student@example.test')
+    const snapshot = await a.transport.snapshot(owner) as Record<string, unknown>
+    const oldBackend = vi.spyOn(a.transport, 'snapshot').mockResolvedValue({ ...snapshot, features: [] })
+    await a.db.syncMeta.delete('regionLabels')
+    const image = (await a.db.images.get(imageId))!, asset = (await a.db.assets.get(image.assetHash))!
+    const region = (await a.db.regions.toArray())[0]
+    await saveImage(asset, image.deckId, [{ ...region, label: 'Welche Struktur?' }], imageId, a.db)
+    const apply = vi.spyOn(a.transport, 'apply')
+    await a.engine.sync()
+    expect(apply).not.toHaveBeenCalled()
+    expect(await a.db.outbox.count()).toBe(1)
+    expect((await a.db.syncMeta.get('status'))?.value).toMatchObject({ error: expect.stringContaining('202610170002_mask_labels.sql') })
+    expect((await a.db.regions.get(region.id))?.label).toBe('Welche Struktur?')
+    oldBackend.mockRestore()
+    await a.engine.retry()
+    expect(await a.db.outbox.count()).toBe(0)
+    expect(parseSnapshot(await a.transport.snapshot(owner), owner).regions[0].data.label).toBe('Welche Struktur?')
+  })
   it('migrates local cards, persists parent-first ordering even at the same clock tick, and lazily caches images on device B', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(clock)
     const a = await device()

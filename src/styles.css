@@ -181,6 +181,7 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
 .mask { position: absolute; display: flex; align-items: center; justify-content: center; min-width: 1px; min-height: 1px; overflow: visible; border-radius: 3px; user-select: none; }
 .mask.editing { background: var(--accent); border: 1.5px solid var(--mask-border); color: var(--accent-ink); }
 .mask > span { font-size: clamp(8px, 1.2vw, 14px); font-weight: 550; pointer-events: none; }
+.mask > .mask-label { min-width: 0; max-width: 100%; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; line-height: 1.2; }
 .mask.selected { outline: 2px solid var(--mask-border); outline-offset: 2px; }
 .mask.target { background: var(--accent); border: 2px solid var(--mask-border); color: var(--accent-ink); }
 .mask.other { background: #7f8c81; border: 1px solid #637067; }
@@ -197,7 +198,11 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
 .mask-list { display: grid; gap: 6px; max-height: 300px; overflow-y: auto; }
 .mask-row { display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border); border-radius: 9px; }
 .mask-row.selected { border-color: var(--accent-ring); background: var(--soft); }
-.mask-row > button:first-child { display: flex; flex: 1; align-items: center; gap: 8px; min-height: 40px; padding: 8px; font-size: 12px; text-align: left; }
+.mask-row > button:first-child { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; min-height: 40px; padding: 8px; font-size: 12px; text-align: left; }
+.mask-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mask-question-field { margin-top: 18px; }
+.mask-question-field textarea { width: 100%; min-height: 80px; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); font: inherit; font-size: 16px; color: var(--ink); resize: vertical; }
+.mask-question-field textarea:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
 .mask-number { min-width: 24px; color: var(--muted); font-size: 11px; }
 .inspector-empty { padding: 20px 0; color: var(--muted); font-size: 12px; text-align: center; }
 .inspector-empty > svg { margin: 0 auto 10px; }
@@ -212,6 +217,8 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
 .review-progress > div { height: 100%; background: var(--accent-ring); transition: width .2s; }
 .review-instruction { margin: 28px 0 20px; text-align: center; }
 .review-instruction h1 { font-size: 24px; font-weight: 600; }
+.review-instruction h1, .review-instruction p { overflow-wrap: anywhere; white-space: pre-wrap; }
+.review-instruction p { margin-top: 8px; color: var(--muted); font-size: 14px; }
 .review-image { max-width: 850px; margin: auto; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; }
 .review-image .image-viewport { height: 48dvh; min-height: 230px; }
 .review-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 22px 0; }

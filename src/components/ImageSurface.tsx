@@ -111,7 +111,7 @@ export function ImageSurface({ asset, regions, onChange, tool = 'pan', selected,
       <div className="image-surface" ref={surface} style={{ aspectRatio: `${asset.width}/${asset.height}`, width: fittedWidth, maxWidth: asset.width, transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} data-testid="image-surface">
         {url && <img src={url} alt="Originalbild der Lernkarte" draggable={false} />}
         {shown.map((r, i) => targetId === r.id && revealed ? null : <div key={r.id} data-region={r.id} data-testid={targetId === r.id ? 'target-mask' : 'occlusion-mask'} className={`mask ${targetId ? targetId === r.id ? 'target' : 'other' : 'editing'} ${selected === r.id ? 'selected' : ''}`} style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.width * 100}%`, height: `${r.height * 100}%` }}>
-          {(!targetId || r.id === targetId) && <span>{targetId ? '?' : String(i + 1).padStart(2, '0')}</span>}
+          {(!targetId || r.id === targetId) && <span className={r.label ? 'mask-label' : undefined} title={r.label || undefined}>{r.label || (targetId ? '?' : String(i + 1).padStart(2, '0'))}</span>}
           {onChange && selected === r.id && tool === 'select' && <i data-resize="true" className="resize-handle" />}
         </div>)}
       </div>

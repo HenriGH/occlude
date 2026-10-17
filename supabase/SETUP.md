@@ -14,6 +14,15 @@ shared outside trusted administration, revoke it in Supabase's project settings.
    `occlude-images` bucket, and the two transactional RPCs.
 5. Confirm success. If the editor shows an error, retain the complete error and
    stop; the transaction rolls back rather than leaving a partial schema.
+6. In a new query, run `supabase/migrations/202610170002_mask_labels.sql` once.
+   It adds optional mask questions and updates the RPCs without replacing cards,
+   images or review history. **If synchronization already works on your project,
+   run only this new file; do not rerun the initial migration.**
+
+For the mask-question update, open SQL Editor → New query, paste the entire new
+file, and click Run. After success, reload the app or use its sync retry action.
+Pending labelled edits then synchronize automatically. No new keys or Auth/SMTP
+settings are needed. The initial migration must already have been applied.
 
 The migration is additive to a fresh project and does not require a database
 password in the frontend. Future schema changes must use new migration files.

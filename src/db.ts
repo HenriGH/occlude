@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { createEmptyCard } from 'ts-fsrs'
-import { descendants, replay, SCHEDULER_VERSION, validRect, validateParent, type Asset, type Deck, type Flashcard, type Grade, type ImageRecord, type Preferences, type Rect, type Region, type ReviewEvent } from './domain'
+import { descendants, MAX_MASK_LABEL_LENGTH, replay, SCHEDULER_VERSION, validRect, validateParent, type Asset, type Deck, type Flashcard, type Grade, type ImageRecord, type Preferences, type Rect, type Region, type ReviewEvent } from './domain'
 import { enqueue, enqueueImage, type OutboxOperation, type SyncMeta } from './sync/model'
 import { setStorageBlocked } from './storageLifecycle'
 
@@ -56,6 +56,9 @@ export async function saveDeck(name: string, parentId: string | null, id = uid()
 export async function saveImage(asset: Asset, deckId: string, rects: Rect[], existingImageId?: string, database = db) {
   if (!rects.length || rects.length > 500 || rects.some(r => !validRect(r)) || new Set(rects.map(r => r.id)).size !== rects.length)
     throw new Error('Bitte mindestens eine gültige Maske zeichnen.')
+  if (rects.some(r => r.label !== undefined && (typeof r.label !== 'string' || r.label.length > MAX_MASK_LABEL_LENGTH)))
+    throw new Error(`Eine Maskenfrage darf höchstens ${MAX_MASK_LABEL_LENGTH} Zeichen enthalten.`)
+  rects = rects.map(r => r.label === undefined ? r : { ...r, label: r.label.trim() })
   return database.transaction('rw', database.tables, async () => {
     if (!await database.decks.get(deckId)) throw new Error('Der gewählte Ordner existiert nicht mehr.')
     const duplicate = await database.images.where('[deckId+assetHash]').equals([deckId, asset.hash]).first()
@@ -70,7 +73,7 @@ export async function saveImage(asset: Asset, deckId: string, rects: Rect[], exi
     if (next.length > 500) throw new Error('Pro Bild sind maximal 500 Masken möglich.')
     // Opening and saving an unchanged card is a local no-op. In particular, do
     // not clone its potentially large original Blob or queue another upload.
-    if (existingImageId && image?.deckId === deckId && next.length === oldRegions.length && next.every(r => oldRegions.some(old => old.id === r.id && old.x === r.x && old.y === r.y && old.width === r.width && old.height === r.height))) return imageId
+    if (existingImageId && image?.deckId === deckId && next.length === oldRegions.length && next.every(r => oldRegions.some(old => old.id === r.id && old.x === r.x && old.y === r.y && old.width === r.width && old.height === r.height && (old.label ?? '') === (r.label ?? '')))) return imageId
     if (!await database.assets.where('hash').equals(asset.hash).count()) await database.assets.put(asset)
     await database.images.put({ id: imageId, deckId, assetHash: asset.hash, createdAt: image?.createdAt ?? now, updatedAt: now, width: asset.width, height: asset.height, mimeType: asset.mimeType })
     const oldCards = await database.cards.where('imageId').equals(imageId).toArray()

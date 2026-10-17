@@ -1,5 +1,6 @@
 // @vitest-environment node
 import type { PGlite } from '@electric-sql/pglite'
+import { readFile } from 'node:fs/promises'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { SCHEDULER_VERSION } from '../domain'
 import type { WireOperation } from './model'
@@ -45,6 +46,50 @@ beforeEach(async () => {
 afterAll(async () => { await pg?.close() })
 
 describe('PostgreSQL migration and tenant security', () => {
+  it('upgrades an existing database without losing cards or immutable review events', async () => {
+    const legacy = await sqlBackend({ through: '202610170001_initial_sync.sql' })
+    try {
+      const user = id(), d = id(), im = id(), region = id(), card = id(), review = id(), hash = 'a'.repeat(64)
+      await legacy.query('insert into auth.users(id) values($1)', [user])
+      await legacy.query("select set_config('request.jwt.claim.sub',$1,false)", [user])
+      await legacy.exec('set role authenticated')
+      const send = (op: WireOperation) => legacy.query('select public.occlude_apply_operation($1::jsonb)', [JSON.stringify(op)])
+      await send(operation('deck.put', d, { id: d, parentId: null, name: 'Bestehender Ordner', createdAt: now }))
+      await legacy.query('insert into storage.objects(bucket_id,name) values($1,$2)', ['occlude-images', `${user}/${hash}`])
+      await send(operation('image.put', im, { id: im, deckId: d, assetHash: hash, width: 1000, height: 650, mimeType: 'image/webp', createdAt: now,
+        regions: [{ id: region, imageId: im, x: .1, y: .2, width: .3, height: .1 }], cards: [{ id: card, regionId: region, imageId: im, createdAt: now }] }))
+      await send(operation('review.add', review, { id: review, cardId: card, rating: 3, reviewedAt: now, schedulerVersion: SCHEDULER_VERSION }))
+      await legacy.exec('reset role')
+      await legacy.exec(await readFile('supabase/migrations/202610170002_mask_labels.sql', 'utf8'))
+      await legacy.exec('set role authenticated')
+      const state = (await legacy.query<{ data: any }>('select public.occlude_snapshot() data')).rows[0].data
+      expect(state.features).toContain('region-labels')
+      expect(state.regions).toEqual([expect.objectContaining({ id: region, label: '' })])
+      expect(state.cards).toEqual([expect.objectContaining({ id: card })])
+      expect(state.reviews).toEqual([expect.objectContaining({ id: review, rating: 3 })])
+      expect(state.decks[0].name).toBe('Bestehender Ordner')
+    } finally { await legacy.close() }
+  })
+  it('stores questions, preserves them for old clients, validates edits atomically and clears them explicitly', async () => {
+    const { payload, imageId, cardId, regionId } = await image(await deck())
+    const labelled = { ...payload, regions: [{ ...payload.regions[0], label: 'Welche Struktur?' }] }
+    const edit = operation('image.put', imageId, labelled, 1)
+    expect(await apply(edit)).toEqual({ version: 2 })
+    expect(await apply(edit)).toEqual({ version: 2 })
+    expect((await snapshot()).regions.find(r => r.id === regionId)?.label).toBe('Welche Struktur?')
+    for (const label of [null, 123, {}, 'x'.repeat(201)]) {
+      await expect(apply(operation('image.put', imageId, { ...payload, regions: [{ ...payload.regions[0], label }] }, 2))).rejects.toThrow('invalid mask label')
+    }
+    expect((await snapshot()).images[0].version).toBe(2)
+    await asUser(userB)
+    expect((await snapshot()).regions).toHaveLength(0)
+    await asUser(userA)
+    await apply(operation('image.put', imageId, payload, 2))
+    expect((await snapshot()).regions[0].label).toBe('Welche Struktur?')
+    await apply(operation('image.put', imageId, { ...payload, regions: [{ ...payload.regions[0], label: '' }] }, 3))
+    expect((await snapshot()).regions[0].label).toBe('')
+    expect((await snapshot()).cards[0].id).toBe(cardId)
+  })
   it('makes all data tables RLS-protected and denies unauthenticated RPC calls', async () => {
     const tables = (await pg.query<{ relname: string; relrowsecurity: boolean }>("select relname,relrowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r'")).rows
     expect(tables).toHaveLength(7)

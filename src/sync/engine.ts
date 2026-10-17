@@ -84,6 +84,12 @@ export class SyncEngine {
         if (processed++ === 100) { this.requested = true; break }
         try {
           if (operation.kind === 'image.put') {
+            const regions = operation.payload.regions as { label?: string }[]
+            if (regions.some(r => r.label !== undefined) && (await this.database.syncMeta.get('regionLabels'))?.value !== true) {
+              const snapshot = parseSnapshot(await this.transport.snapshot(connection.userId), connection.userId)
+              if (!snapshot.regionLabels) throw new CloudError('Für Maskenfragen fehlt das Supabase-Update. Bitte 202610170002_mask_labels.sql im SQL Editor ausführen. Die Änderung bleibt lokal gespeichert.')
+              await this.database.syncMeta.put({ key: 'regionLabels', value: true })
+            }
             const hash = String(operation.payload.assetHash)
             const key = `uploaded:${connection.userId}:${hash}`
             if (!(await this.database.syncMeta.get(key))?.value) {

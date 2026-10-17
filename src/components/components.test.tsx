@@ -17,6 +17,17 @@ beforeAll(() => {
 })
 
 describe('review occlusion semantics', () => {
+  it('shows only the current mask question and treats label content as plain text', () => {
+    const question = '<b>Welche Struktur?</b>'
+    const labelled = regions.map((r, i) => ({ ...r, label: i === 0 ? question : 'Andere Frage' }))
+    const { rerender } = render(<ImageSurface asset={asset} regions={labelled} targetId="target" />)
+    expect(screen.getByTestId('target-mask')).toHaveTextContent(question)
+    expect(screen.getByTestId('target-mask').querySelector('b')).toBeNull()
+    expect(screen.queryByText('Andere Frage')).not.toBeInTheDocument()
+    rerender(<ImageSurface asset={asset} regions={labelled} targetId="target" revealed />)
+    expect(screen.queryByText(question)).not.toBeInTheDocument()
+    expect(screen.queryByText('Andere Frage')).not.toBeInTheDocument()
+  })
   it('hides all targets initially and uncovers only the requested answer', () => {
     const { rerender } = render(<ImageSurface asset={asset} regions={regions} targetId="target" />)
     expect(screen.getByTestId('target-mask')).toHaveStyle({ left: '10%', top: '20%', width: '20%', height: '10%' })

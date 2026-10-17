@@ -8,7 +8,9 @@
   once even when referenced by more than one image placement.
 - `images`: UUID, deckId, assetHash, createdAt, updatedAt. One placement per hash
   per deck. Moving images moves their cards, which derive deck membership here.
-- `regions`: UUID, imageId, normalized x/y/width/height. Every region has one card.
+- `regions`: UUID, imageId, normalized x/y/width/height, optional `label` (question,
+  up to 200 characters). Every region has one card. The non-indexed optional field
+  needs no IndexedDB version upgrade; existing masks remain valid without it.
 - `cards`: UUID, regionId (unique), imageId, createdAt, full `ts-fsrs` Card state.
 - `reviews`: immutable UUID, cardId, rating, reviewedAt, schedulerVersion.
 - `preferences`: keyed local settings, selected deck, daily new limit/day boundary.
@@ -30,11 +32,17 @@ Cloud tombstones keep stale clients from resurrecting deleted data.
 
 `profiles(user_id, settings, version, created_at)`, `decks(id, user_id, parent_id, name, ...)`,
 `images(id, user_id, deck_id, storage_path, width, height, mime_type, content_hash,
-...)`, `occlusion_regions(id, user_id, image_id, x, y, width, height, ...)`,
+...)`, `occlusion_regions(id, user_id, image_id, x, y, width, height, label, ...)`,
 `cards(id, user_id, region_id, image_id, ...)`,
 `review_events(id, user_id, card_id, rating, reviewed_at,
 scheduler_version, created_at)`, and `sync_operations(id, user_id, device_id,
 operation_type, operation_payload, processing_status, result, created_at, processed_at)`.
+
+`202610170002_mask_labels.sql` adds a non-null text label with an empty default
+and a 200-character limit. Apply it after the initial migration; existing rows
+and review events are retained. `image.put` validates label types, updates text
+with the same version/conflict rules as mask geometry, preserves omitted labels
+from old clients and clears only explicitly supplied empty strings.
 
 Schema refinement: `card_scheduling` is a security-invoker view containing original
 creation time, canonical ordered events, count, last review, and scheduler version.

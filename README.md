@@ -22,12 +22,13 @@ web manifest with PNG icons rendered from the existing logo. Browser theme color
 follow the selected appearance, which is also applied before the app starts to
 avoid a white launch flash. Installation does not yet enable offline restarts.
 
-The logo keeps its rounded outline and pale-green occlusion mark without an
-enclosing colored tile. In-app branding follows the selected light/dark appearance;
-the favicon follows the browser's color scheme. Transparent vector exports are
-available as `public/logo.svg` (dark outline) and `public/logo-light.svg` (light
-outline). General-purpose PNG icons are transparent; maskable and Apple touch
-icons use a neutral background so the operating system can apply its own shape.
+The default logo uses the white outline and pale-green occlusion mark. Browser
+and installation icons use this version on a neutral dark background for contrast
+on any home screen. In-app branding still follows the selected light/dark
+appearance. Transparent vector exports are `public/logo.svg` and
+`public/logo-light.svg` (white outline), plus `public/logo-dark.svg` (dark outline).
+Run `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium node scripts/generate-icons.mjs`
+to regenerate the installation PNGs from the default SVG.
 
 The logo's pale green (`#bde287`) is the shared accent for the wordmark dot,
 primary actions, selected tools and occlusion masks. Light surfaces use darker
@@ -70,7 +71,9 @@ and gaps. The app does not have a service worker in Phase 1.
 1. Select or create a deck. The selected deck persists between creations.
 2. Paste a screenshot with Ctrl/Cmd+V anywhere outside a text field, drop a file,
    or choose a PNG/JPEG/WebP file (maximum 15 MB, 20 megapixels).
-3. Draw rectangles. Every rectangle becomes a card. Save once, or Ctrl/Cmd+Enter.
+3. Draw rectangles. Every rectangle becomes a card. Select a mask to add an optional
+   question (up to 200 characters). It appears on the mask and above the image during
+   review. Save once, or Ctrl/Cmd+Enter.
 4. Select **Lernen** or **Jetzt lernen**, reveal, and rate Nochmal/Schwer/Gut/Einfach.
 
 Editor shortcuts: **R** draw, **V** select/move/resize, **H** pan, Delete remove the
@@ -120,10 +123,15 @@ required action is applying the migration and enabling email authentication:
 3. Enable email authentication. Allow its development
    origin and final Cloudflare Pages HTTPS origin in Auth redirect settings. Use
    test accounts for automated isolation and device-sync tests.
-4. Apply `supabase/migrations/202610170001_initial_sync.sql` to the chosen project, then
+4. Apply the SQL files in `supabase/migrations/` in filename order, once each, then
    run RLS, private-storage, and sync-recovery acceptance checks. No migrations
    have been applied to the hosted project by the agent. See the exact dashboard
    steps and Ubuntu commands in [supabase/SETUP.md](supabase/SETUP.md).
+
+Existing projects with working sync only need the new
+`supabase/migrations/202610170002_mask_labels.sql` migration for mask questions.
+Until then, labelled edits stay local and queued; the app reports the missing
+update rather than letting an old server silently drop the text.
 
 ## GitHub and a hosted website
 
