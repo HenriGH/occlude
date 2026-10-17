@@ -16,6 +16,7 @@ import { BrandMark } from './components/BrandMark'
 import { applyAppearance } from './appearance'
 import { StartupScreen } from './components/StartupScreen'
 import { DeckNavigation } from './components/DeckNavigation'
+import { useEdgeSwipe } from './useEdgeSwipe'
 
 type View = 'dashboard' | 'library' | 'create' | 'settings'
 function deckPath(decks: Deck[], id: string): string {
@@ -75,6 +76,8 @@ export default function App() {
   const { stats, images, sortedDecks, deckStats, inFolder } = library
   const selectDeck = (id: string | null) => { void run(() => db.preferences.update('app', { selectedDeckId: id })); setMenuOpen(false) }
   const navigate = (next: View) => { setView(next); setMenuOpen(false) }
+  const openMenu = useCallback(() => setMenuOpen(true), [])
+  useEdgeSwipe(!!data && cloud.loaded && !cloud.blocked && !bootError && !session && !deckDialog && !processing && !dragging && !menuOpen, openMenu)
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 15000)
     const connectivity = () => { setOnline(navigator.onLine); setClock(Date.now()) }

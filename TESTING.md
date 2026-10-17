@@ -267,3 +267,27 @@ and returns no ready workspace until preferences exist. A real held reader on
 an unseeded database checks that upload stays unavailable, the slow-start help
 appears, and releasing the reader completes initialization automatically. Cached
 workspaces still open while another reader is held; no Auth/cloud wait is added.
+
+## Mobile edge swipe
+
+Production build, all 72 unit/component/SQL/integration checks and all 27 Chromium
+browser scenarios passed with the edge-swipe handler enabled.
+
+`e2e/edge-swipe.spec.ts` uses Chromium's trusted `Input.dispatchTouchEvent` input
+with Pixel 7 and iPhone 13 profiles, so browser panning and touch cancellation
+participate in the checks. A right swipe starting within the left 32 CSS pixels
+opens the drawer after 56 pixels of predominantly horizontal movement. Mid-page,
+short, leftward, vertical, canceled and multi-touch gestures must leave it closed.
+The tests verify actual vertical scrolling, opening after scrolling, menu-button
+and backdrop taps, modal exclusion, and no hidden drawer during a review.
+
+Editor checks draw and save an additional mask, pan from both the canvas edge and
+center, pinch to 200%, and open/dismiss the menu without losing the unsaved draft.
+Tool selection/reset use normal control clicks between the raw touch sequences.
+The drawer capture was visually inspected. The handler adds no overlay or global
+touch-action restriction; non-passive movement listeners exist only during a
+possible edge swipe. No network sync is needed to open the menu.
+
+These mobile profiles do not test Safari or physical Android/iOS system gestures.
+The OS can reserve the physical edge for Back; start just inside that edge or use
+the existing menu button when the OS intercepts it.

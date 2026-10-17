@@ -20,6 +20,9 @@ first-card prompt. Cached content stays available during synchronization.
 Sidebar folder arrows expand/collapse nested folders independently of selection;
 only folders with children have an arrow. The view is remembered on this browser.
 Selecting a nested folder from the dashboard reveals its ancestry in the sidebar.
+On mobile, swipe right from the left edge to open the menu. Vertical scrolling,
+image drawing/panning and pinch-to-zoom keep their own gestures. The menu button
+remains available; native OS back gestures at the physical edge take precedence.
 
 The mobile layout uses dynamic viewport height, safe-area insets and a standalone
 web manifest with PNG icons rendered from the existing logo. Browser theme colors
