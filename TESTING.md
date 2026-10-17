@@ -134,3 +134,29 @@ the user's physical phone or a hosted Supabase performance benchmark. The user
 reports working live multi-device sync. The cloud agent has not independently
 validated that deployment; the protocol still pulls full metadata snapshots.
 App-shell restart without internet and deliberate deck downloads remain Phase 3.
+
+## Compact interface and mobile installation
+
+Validation on 2026-10-17: build passed; all 64 unit/component/SQL/integration tests
+and all 13 Chromium browser scenarios passed against the production build.
+
+The new UI scenarios verify that an existing library with no cards due is not
+treated as a new library, and that selecting an empty folder preserves the global
+card count and a route back to all cards. A second independent browser context
+signs into the same mocked account, holds its first connection snapshot, checks
+the recovery state, then receives the first context's cards without creating a
+duplicate default folder or publishing local seed data. Shared HTTP fixtures live
+in `e2e/helpers/cloud.ts`; no real login emails or hosted mutations are sent.
+
+Pixel 7 and iPhone 13 device emulation cover installation metadata and actual PNG
+icon dimensions, simulated top/bottom safe areas, portrait/landscape layout without
+horizontal overflow, and the selected dark appearance before application scripts
+load. Existing screenshot-paste/edit/review tests still verify mask geometry after
+mobile resizing, zoom and pan. Desktop, mobile light/dark, landscape, settings and
+library screenshots were inspected during the UI work.
+
+These device profiles use Chromium, not physical Android/iOS system chrome or
+Safari. Native status/navigation bars and updates to an already-installed home-
+screen app still require a physical-device check after deployment. The manifest
+provides standalone installation metadata; it does not add a service worker or
+offline app-shell caching. No new Supabase migration is needed.

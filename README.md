@@ -8,8 +8,19 @@ repository, `/workspace/occlude` in the cloud environment.
 local MVP is tested. Passwordless login, transactional sync, the migration, and
 local SQL/security tests are implemented. The user reports working live multi-device
 sync; automated validation uses local SQL and mocked HTTP. For a new project, apply the migration and configure Auth
-using [supabase/SETUP.md](supabase/SETUP.md) before connecting an account. Installable
-offline PWA support and ZIP backups remain planned phases.
+using [supabase/SETUP.md](supabase/SETUP.md) before connecting an account. Home-screen
+installation metadata is included; offline app-shell caching and ZIP backups remain
+planned phases.
+
+The interface uses system typography, a compact study summary, and light/dark
+appearances. An existing library with no cards due remains an existing library;
+an unconnected account or first cloud pull shows a recovery state without a
+first-card prompt. Cached content stays available during synchronization.
+
+The mobile layout uses dynamic viewport height, safe-area insets and a standalone
+web manifest with PNG icons rendered from the existing logo. Browser theme colors
+follow the selected appearance, which is also applied before the app starts to
+avoid a white launch flash. Installation does not yet enable offline restarts.
 
 ## Run
 

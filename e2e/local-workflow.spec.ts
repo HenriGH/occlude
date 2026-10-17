@@ -14,7 +14,7 @@ async function screenshot(page: Page) {
 async function upload(page: Page) {
   const png = await screenshot(page)
   await page.getByLabel('Bild hochladen').setInputFiles({ name: 'lecture.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') })
-  await expect(page.getByRole('heading', { name: 'Wissen sichtbar machen.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Masken zeichnen' })).toBeVisible()
 }
 async function draw(page: Page, x: number, y: number) {
   const box = (await page.getByTestId('image-surface').boundingBox())!
@@ -38,18 +38,18 @@ test('A: native screenshot paste creates three independent cards, review persist
   page.on('pageerror', e => errors.push(e.message))
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Bereit für einen klaren Kopf?' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible()
   const png = await screenshot(page)
   await page.evaluate(async base64 => {
     const blob = await (await fetch(`data:image/png;base64,${base64}`)).blob()
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
   }, png)
   await page.keyboard.press('Control+V')
-  await expect(page.getByRole('heading', { name: 'Wissen sichtbar machen.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Masken zeichnen' })).toBeVisible()
   await draw(page, .07, .21); await draw(page, .07, .41); await draw(page, .07, .61)
   await expect(page.getByTestId('occlusion-mask')).toHaveCount(3)
   await page.getByRole('button', { name: '3 Karten speichern' }).click()
-  await expect(page.getByRole('heading', { name: 'Deine Kartenbibliothek.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bibliothek' })).toBeVisible()
   expect(await counts(page)).toEqual({ images: 1, assets: 1, cards: 3, regions: 3, reviews: 0 })
   await page.getByRole('button', { name: 'Lernen', exact: true }).click()
   await expect(page.getByTestId('target-mask')).toHaveCount(1)
@@ -80,7 +80,7 @@ test('A: native screenshot paste creates three independent cards, review persist
   expect((await counts(page)).reviews).toBe(2)
   await context.setOffline(false)
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Bereit für einen klaren Kopf?' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible()
   expect((await counts(page)).reviews).toBe(2)
   await page.screenshot({ path: 'test-results/mobile-dashboard.png', fullPage: true })
   expect(errors).toEqual([])
@@ -97,7 +97,7 @@ test('E: nested deck aggregation, selected deck persistence, and history-preserv
   await page.getByRole('button', { name: 'Antwort zeigen' }).click()
   await page.getByRole('button', { name: /^Gut/ }).click()
   await page.getByRole('button', { name: 'Lernen beenden' }).click()
-  await page.getByRole('button', { name: 'Kartenbibliothek' }).click()
+  await page.getByRole('button', { name: 'Bibliothek' }).click()
   await page.getByRole('button', { name: 'Bild mit 2 Karten bearbeiten' }).click()
   await page.getByRole('button', { name: 'Maske bearbeiten (V)', exact: true }).click()
   const mask = (await page.getByTestId('occlusion-mask').first().boundingBox())!

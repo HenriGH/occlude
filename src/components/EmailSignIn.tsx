@@ -33,7 +33,7 @@ export function EmailSignIn({ auth, projectUrl }: { auth: EmailAuth; projectUrl:
     try {
       const { error } = await auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: new URL('/', location.origin).href } })
       if (error) { setError(authFeedback(error)); return }
-      setNotice('Anmelde-E-Mail angefordert. Falls sie einen Code enthält, gib ihn unten ein. Einen Anmeldelink bitte im selben Browser auf dieser Website öffnen. Auch im Spam-Ordner nachsehen.')
+      setNotice('E-Mail angefordert. Code unten eingeben oder den Link in diesem Browser öffnen.')
     } catch { setError('Die Anmelde-E-Mail konnte nicht angefordert werden. Bitte Verbindung prüfen und kurz warten.') }
     finally { locked.current = false; setBusy(null) }
   }
@@ -50,17 +50,17 @@ export function EmailSignIn({ auth, projectUrl }: { auth: EmailAuth; projectUrl:
   }
   return <div className="email-sign-in">
     <form onSubmit={e => void send(e)} className="login-form">
-      <p className="muted">Melde dich auf deinen Geräten mit derselben E-Mail-Adresse an. Deine Karten bleiben lokal nutzbar.</p>
+      <p className="muted">Auf allen Geräten dieselbe E-Mail-Adresse verwenden.</p>
       <label>E-Mail-Adresse<input type="email" autoComplete="email" required value={email} onChange={e => { setEmail(e.target.value); setToken('') }} placeholder="du@uni.de" disabled={!!busy} /></label>
       <button className="button primary" type="submit" disabled={!!busy || !validEmail || seconds > 0}><LogIn size={16} />{busy === 'send' ? 'Wird gesendet …' : seconds > 0 ? `Erneut anfragen in ${seconds} s` : 'Anmelde-E-Mail senden'}</button>
     </form>
-    {seconds > 0 && <p className="muted small send-pause">Kurze Sendepause zum Schutz vor Mehrfachanfragen. Das Versandlimit beim Anbieter kann länger gelten.</p>}
+    {seconds > 0 && <p className="muted small send-pause">Sendepause. Das Anbieterlimit kann länger gelten.</p>}
     {notice && <p className="cloud-notice" role="status">{notice}</p>}
     {error && <p className="cloud-error" role="alert">{error}</p>}
     <form onSubmit={e => void verify(e)} className="login-form code-form">
       <label>Code aus der E-Mail<input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" minLength={6} maxLength={10} value={token} onChange={e => setToken(e.target.value.replace(/\s/g, ''))} placeholder="Anmeldecode" disabled={!!busy} /></label>
       <button className="button subtle" type="submit" disabled={!!busy || !validEmail || !validToken}><KeyRound size={16} />{busy === 'verify' ? 'Wird geprüft …' : 'Mit Code anmelden'}</button>
-      <p className="muted small">Ein bereits empfangener Code lässt sich auch während einer Sendepause prüfen. Der Code wird nicht gespeichert.</p>
+      <p className="muted small">Der Code funktioniert auch während der Sendepause.</p>
     </form>
   </div>
 }

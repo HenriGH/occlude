@@ -14,7 +14,7 @@ export function CloudSettings({ cloud, onError }: { cloud: CloudState; onError: 
       {cloud.authError && <p role="alert" className="cloud-error">{cloud.authError}</p>}
       {!cloud.authReady ? <p className="muted" role="status">Anmeldung wird geladen …</p> : !cloud.session ? <EmailSignIn auth={supabase.auth} projectUrl={configuration!.url} /> : <>
         <p className="cloud-account">Angemeldet als <strong>{cloud.session.user.email}</strong></p>
-        {cloud.connection && cloud.session.user.id !== cloud.connection.userId ? <p className="cloud-error" role="alert">Dieses Gerät ist mit {cloud.connection.email} verbunden. Bitte mit diesem Konto anmelden. Lokale Daten werden nicht mit einem anderen Konto vermischt.</p> : !cloud.connection || cloud.connection.locked ? <><p className="muted">{cloud.connection ? 'Verbinde das ursprüngliche Konto erneut, um deine lokalen Karten zu entsperren.' : 'Verbinde dieses Gerät. Vorhandene lokale Karten werden in dein Konto übernommen; Karten anderer Geräte werden geladen.'}</p><button className="button primary" disabled={busy} onClick={() => void action(async () => {
+        {cloud.connection && cloud.session.user.id !== cloud.connection.userId ? <p className="cloud-error" role="alert">Dieses Gerät ist mit {cloud.connection.email} verbunden. Bitte mit diesem Konto anmelden. Lokale Daten werden nicht mit einem anderen Konto vermischt.</p> : !cloud.connection || cloud.connection.locked ? <><p className="muted">{cloud.connection ? 'Verbinde dein Konto erneut, um die Karten zu entsperren.' : 'Verbinde dieses Gerät, um deine Karten zu synchronisieren.'}</p><button className="button primary" disabled={busy} onClick={() => void action(async () => {
           if (!cloud.connection && !confirm('Dieses Gerät mit dem angemeldeten Konto verbinden und vorhandene lokale Karten hochladen? Die Zuordnung bleibt für dieses Browserprofil bestehen.')) return
           await cloudEngine?.connect(cloud.session!.user.email ?? '')
         })}><Cloud size={16} />{busy ? 'Wird verbunden …' : 'Dieses Gerät verbinden'}</button></> : <>
@@ -32,6 +32,6 @@ export function CloudSettings({ cloud, onError }: { cloud: CloudState; onError: 
         })}><LogOut size={15} />Auf diesem Gerät abmelden</button>
       </>}
     </>}
-    <p className="settings-warning">Ein Gerät bleibt einem Konto zugeordnet. Abmelden sperrt die lokale Ansicht und löscht keine ausstehenden Lernereignisse. Browserdaten sind keine verschlüsselte Datensicherung. Ein vollständiger Offline-Neustart und ein eigener Export sind noch nicht verfügbar.</p>
+    <details className="settings-details"><summary>Hinweise zur Synchronisierung</summary><p>Dieses Gerät bleibt deinem Konto zugeordnet. Abmelden sperrt die lokale Ansicht; ausstehende Änderungen bleiben gespeichert. Offline-Neustart und Export sind noch nicht verfügbar.</p></details>
   </div>
 }
