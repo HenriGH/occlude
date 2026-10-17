@@ -29,6 +29,11 @@ available as `public/logo.svg` (dark outline) and `public/logo-light.svg` (light
 outline). General-purpose PNG icons are transparent; maskable and Apple touch
 icons use a neutral background so the operating system can apply its own shape.
 
+The logo's pale green (`#bde287`) is the shared accent for the wordmark dot,
+primary actions, selected tools and occlusion masks. Light surfaces use darker
+green for small action text and focus rings; dark surfaces use the pale accent.
+The surrounding interface keeps its neutral light/dark appearance.
+
 ## Run
 
 Use Node 24.19 (see `.node-version`; minimum Node 22.12) and npm.
