@@ -15,6 +15,7 @@ import { StudySummary } from './components/StudySummary'
 import { BrandMark } from './components/BrandMark'
 import { applyAppearance } from './appearance'
 import { StartupScreen } from './components/StartupScreen'
+import { DeckNavigation } from './components/DeckNavigation'
 
 type View = 'dashboard' | 'library' | 'create' | 'settings'
 function deckPath(decks: Deck[], id: string): string {
@@ -125,7 +126,7 @@ export default function App() {
       <a className="brand" href="#" onClick={e => { e.preventDefault(); if (!draft || confirm('Ungespeicherten Entwurf schließen?')) { setDraft(null); navigate('dashboard') } }}><BrandMark />occlude<span className="brand-dot">.</span></a>
       <nav className="primary-nav" aria-label="Hauptnavigation"><button className={view === 'dashboard' && !draft ? 'active' : ''} onClick={() => { if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('dashboard') }}><LayoutDashboard size={18} />Übersicht</button><button className={view === 'library' && !draft ? 'active' : ''} onClick={() => { if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('library') }}><BookOpen size={18} />Bibliothek<span className="nav-count">{data.cards.length}</span></button></nav>
       <div className="sidebar-section-heading"><span>Ordner</span><button className="icon-button" aria-label="Ordner erstellen" onClick={() => setDeckDialog({ parentId: root })}><Plus size={16} /></button></div>
-      <nav className="deck-nav" aria-label="Ordner"><button className={!root ? 'selected' : ''} onClick={() => selectDeck(null)}><Folder size={16} /><span>Alle Ordner</span></button>{sortedDecks.map(d => <button key={d.id} className={root === d.id ? 'selected' : ''} title={deckPath(decks, d.id)} style={{ paddingLeft: 13 + Math.min(5, deckPath(decks, d.id).split(' / ').length - 1) * 13 }} onClick={() => selectDeck(d.id)}><ChevronRight size={12} /><span>{d.name}</span></button>)}<button className="new-deck-link" onClick={() => setDeckDialog({ parentId: root })}><Plus size={15} />Neuer Ordner</button></nav>
+      <DeckNavigation decks={sortedDecks} selectedId={root} onSelect={selectDeck} onCreate={() => setDeckDialog({ parentId: root })} />
       <div className="sidebar-bottom"><button className={`settings-link ${view === 'settings' ? 'active' : ''}`} onClick={() => { if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('settings') }}><Settings2 size={18} />Einstellungen<ChevronRight size={15} /></button></div>
     </aside></>}
     <main className="main-panel" onDragOver={e => { if (e.dataTransfer.types.includes('Files') && !session) { e.preventDefault(); setDragging(true) } }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }} onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f && !deckDialog) void acceptFile(f) }}>

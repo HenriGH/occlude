@@ -216,3 +216,16 @@ The migration has only been applied to local PostgreSQL fixtures. An existing
 Supabase project needs `202610170002_mask_labels.sql` run once as described in
 supabase/SETUP.md. Physical launcher icon-refresh behavior remains OS-dependent;
 no hosted deployment or dashboard update is claimed by these checks.
+
+## Collapsible folder navigation
+
+Production build, all 72 unit/component/SQL/integration checks and all 20 Chromium
+browser scenarios passed after this change. `e2e/deck-navigation.spec.ts` creates
+three hierarchy levels through the real folder UI, checks independent nested
+collapse, leaf folders without toggle buttons, keyboard Space/Enter activation,
+and unchanged selection while a parent is collapsed. Reload preserves the folded
+view even when the selected folder is inside it. Mobile checks verify that arrow
+buttons keep the drawer open, name buttons select/close it, and selecting a hidden
+descendant from the dashboard reveals its ancestors. Desktop and mobile captures
+were visually inspected; the mobile capture disables drawer transition animations.
+Expansion is a local browser preference and does not enqueue cloud operations.

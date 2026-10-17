@@ -17,6 +17,10 @@ appearances. An existing library with no cards due remains an existing library;
 an unconnected account or first cloud pull shows a recovery state without a
 first-card prompt. Cached content stays available during synchronization.
 
+Sidebar folder arrows expand/collapse nested folders independently of selection;
+only folders with children have an arrow. The view is remembered on this browser.
+Selecting a nested folder from the dashboard reveals its ancestry in the sidebar.
+
 The mobile layout uses dynamic viewport height, safe-area insets and a standalone
 web manifest with PNG icons rendered from the existing logo. Browser theme colors
 follow the selected appearance, which is also applied before the app starts to
