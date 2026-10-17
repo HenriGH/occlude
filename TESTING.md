@@ -160,3 +160,10 @@ Safari. Native status/navigation bars and updates to an already-installed home-
 screen app still require a physical-device check after deployment. The manifest
 provides standalone installation metadata; it does not add a service worker or
 offline app-shell caching. No new Supabase migration is needed.
+
+Logo refinement on 2026-10-17: build and all 13 production-browser scenarios
+passed. Sidebar/mobile branding was visually checked in both appearances, including
+320px and 390px widths without horizontal overflow. PNG corner alpha was checked
+directly: general-purpose icons are transparent, while maskable/Apple icons have
+the neutral `#f5f5f7` background. The in-app SVG keeps the original symbol geometry
+and inherits the active text color; the favicon responds to the browser's scheme.

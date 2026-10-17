@@ -22,6 +22,13 @@ web manifest with PNG icons rendered from the existing logo. Browser theme color
 follow the selected appearance, which is also applied before the app starts to
 avoid a white launch flash. Installation does not yet enable offline restarts.
 
+The logo keeps its rounded outline and pale-green occlusion mark without an
+enclosing colored tile. In-app branding follows the selected light/dark appearance;
+the favicon follows the browser's color scheme. Transparent vector exports are
+available as `public/logo.svg` (dark outline) and `public/logo-light.svg` (light
+outline). General-purpose PNG icons are transparent; maskable and Apple touch
+icons use a neutral background so the operating system can apply its own shape.
+
 ## Run
 
 Use Node 24.19 (see `.node-version`; minimum Node 22.12) and npm.
