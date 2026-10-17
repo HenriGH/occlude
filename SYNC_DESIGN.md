@@ -38,6 +38,16 @@ startup screen. Status queries use primary-key cursors rather than cloning the
 queued image/region payloads. Library statistics are memoized across cloud-status
 updates. Transactions never hold IndexedDB open across a network request.
 
+Existing workspaces initialize with a read, avoiding a startup write lock shared
+with browser tabs and the installed app. First-launch seeding still checks again
+inside a transaction so concurrent instances cannot create duplicate defaults.
+IndexedDB's `blocked` upgrade event immediately shows instructions to save work
+and close the other Occlude browser tab. Other unresolved local startup reads get
+the same recovery guidance after six seconds, phrased conditionally because a
+slow read does not prove another tab is responsible. Pending requests continue
+and the app renders automatically when the blocker releases. Reload never clears
+local data, the owner binding or queued operations; no storage or Web Lock is stolen.
+
 Transient failures use durable capped
 exponential backoff with jitter (about 1 second to 5 minutes); manual retry resets
 the delay. A connection failure stops the current batch instead of repeating the

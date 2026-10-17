@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from 'dexie'
 import { createEmptyCard } from 'ts-fsrs'
 import { descendants, replay, SCHEDULER_VERSION, validRect, validateParent, type Asset, type Deck, type Flashcard, type Grade, type ImageRecord, type Preferences, type Rect, type Region, type ReviewEvent } from './domain'
 import { enqueue, enqueueImage, type OutboxOperation, type SyncMeta } from './sync/model'
+import { setStorageBlocked } from './storageLifecycle'
 
 export class OccludeDB extends Dexie {
   decks!: EntityTable<Deck, 'id'>
@@ -23,11 +24,16 @@ export class OccludeDB extends Dexie {
   }
 }
 export const db = new OccludeDB()
+db.on('blocked', () => setStorageBlocked(true))
+db.on('ready', () => { setStorageBlocked(false) }, true)
 const uid = (): string => crypto.randomUUID()
 export const defaultPreferences: Preferences = { id: 'app', selectedDeckId: null, newLimit: 20, dayBoundary: 4, theme: 'system' }
 
 export async function initialize(database = db) {
+  // Existing workspaces need no startup write lock shared with other instances.
+  if (await database.preferences.get('app')) return
   await database.transaction('rw', [database.decks, database.preferences], async () => {
+    // Two first launches may reach this transaction concurrently.
     if (await database.preferences.get('app')) return
     const id = uid(), now = Date.now()
     await database.decks.add({ id, parentId: null, name: 'Mein Studium', createdAt: now, updatedAt: now })

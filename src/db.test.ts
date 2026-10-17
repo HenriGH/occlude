@@ -10,6 +10,18 @@ const rect = (id: string): Rect => ({ id, x: .1, y: .2, width: .2, height: .1 })
 beforeEach(async () => { database = new OccludeDB(`test-${crypto.randomUUID()}`); await initialize(database); deck = (await database.decks.toArray())[0].id })
 afterEach(async () => { await database.delete() })
 
+it('seeds exactly one workspace when two instances initialize for the first time', async () => {
+  await database.delete()
+  database = new OccludeDB(database.name)
+  const other = new OccludeDB(database.name)
+  try {
+    await Promise.all([initialize(database), initialize(other)])
+    const decks = await database.decks.toArray()
+    expect(decks).toHaveLength(1)
+    expect((await other.preferences.get('app'))?.selectedDeckId).toBe(decks[0].id)
+  } finally { other.close() }
+})
+
 describe('transactional screenshot-to-card workflow', () => {
   it('creates exactly three independent cards with one underlying image and one Blob', async () => {
     const id = await saveImage(asset, deck, ['a', 'b', 'c'].map(rect), undefined, database)

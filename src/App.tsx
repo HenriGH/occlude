@@ -14,6 +14,7 @@ import { returningFromAuth } from './sync/client'
 import { StudySummary } from './components/StudySummary'
 import { BrandMark } from './components/BrandMark'
 import { applyAppearance } from './appearance'
+import { StartupScreen } from './components/StartupScreen'
 
 type View = 'dashboard' | 'library' | 'create' | 'settings'
 function deckPath(decks: Deck[], id: string): string {
@@ -111,8 +112,8 @@ export default function App() {
     const current = reviewQueue(data?.cards ?? [], data?.images ?? [], decks, data?.reviews ?? [], prefs, root, new Date())
     setSession({ ids: current.queue.map(c => c.id), name: selected?.name ?? 'Alle Ordner' })
   }
-  if (bootError) return <div className="fatal-error" role="alert"><h1>Lokaler Speicher nicht verfügbar</h1><p>{bootError}</p><p>Bitte erlaube Website-Daten und verwende einen aktuellen Browser.</p></div>
-  if (!data || !cloud.loaded) return <div className="loading-screen" role="status"><BrandMark /> Dein Lernraum wird vorbereitet …</div>
+  if (bootError) return <StartupScreen error />
+  if (!data || !cloud.loaded) return <StartupScreen />
   if (cloud.blocked) return <main className="cloud-lock"><h1>Dein Lernraum ist gesperrt.</h1><p className="muted">Melde dich mit dem verbundenen Konto an, um auf diesem Gerät weiterzulernen.</p><CloudSettings cloud={cloud} onError={onError} />{toast?.error && <p role="alert" className="cloud-error">{toast.message}</p>}</main>
   const cloudLabel = cloud.connection ? !online ? 'Offline' : cloud.status?.error ? 'Cloud prüfen' : cloud.status?.running ? 'Synchronisiert …' : cloud.pending?.length ? `${cloud.pending.length} ausstehend` : cloud.status?.lastSuccess ? 'Synchronisiert' : 'Cloud verbunden' : 'Lokal gespeichert'
   const awaitingCloud = !cloud.authReady || !!cloud.session && !cloud.connection || !!cloud.connection && !cloud.status?.lastSuccess

@@ -167,3 +167,25 @@ passed. Sidebar/mobile branding was visually checked in both appearances, includ
 directly: general-purpose icons are transparent, while maskable/Apple icons have
 the neutral `#f5f5f7` background. The in-app SVG keeps the original symbol geometry
 and inherits the active text color; the favicon responds to the browser's scheme.
+
+## Browser and installed-app startup contention
+
+Validation on 2026-10-17: build passed, all 65 unit/component/SQL/integration
+tests passed, and all 16 Chromium scenarios passed against the production build.
+
+`e2e/multiple-instances.spec.ts` uses two same-origin pages and native IndexedDB
+connections, not mocked database methods. It verifies concurrent startup while a
+reader holds a transaction, followed by editing in one instance and live updates
+in the other. A held writer exercises the six-second recovery message at mobile
+width; releasing it lets the second instance render automatically with its cards
+and unacknowledged edit intact. An old native v1 connection blocks the real v2
+upgrade, triggers the immediate browser-tab guidance, then closes so startup can
+complete with the original deck preserved. External HTTP requests are aborted.
+The database unit suite also checks simultaneous first-launch seeding through
+two independent connections, producing exactly one default workspace.
+
+Ordinary concurrent starts did not reproduce the user's phone-specific stall.
+These tests cover controlled storage contention and recovery in Chromium; actual
+Android browser/installed-app lifecycle behavior and Safari require a device
+check after deployment. A slow-start message is conditional because a delayed
+local read alone cannot identify which process, if any, holds up storage.
