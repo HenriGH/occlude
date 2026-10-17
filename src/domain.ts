@@ -6,7 +6,7 @@ export type Grade = Rating.Again | Rating.Hard | Rating.Good | Rating.Easy
 export interface Rect { id: string; x: number; y: number; width: number; height: number }
 export interface Deck { id: string; parentId: string | null; name: string; createdAt: number; updatedAt: number }
 export interface Asset { hash: string; blob: Blob; width: number; height: number; mimeType: string }
-export interface ImageRecord { id: string; deckId: string; assetHash: string; createdAt: number; updatedAt: number }
+export interface ImageRecord { id: string; deckId: string; assetHash: string; createdAt: number; updatedAt: number; width?: number; height?: number; mimeType?: string }
 export interface Region extends Rect { imageId: string }
 export interface Flashcard { id: string; regionId: string; imageId: string; createdAt: number; schedule: Card }
 export interface ReviewEvent { id: string; cardId: string; rating: Grade; reviewedAt: number; schedulerVersion: string }

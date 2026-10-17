@@ -4,8 +4,11 @@ A focused image-occlusion flashcard app with a German interface. Paste a lecture
 screenshot, draw masks, save, and review with FSRS. Project files live in this
 repository, `/workspace/occlude` in the cloud environment.
 
-**Current milestone: Phase 1 — local functional MVP.** Cloud sync, an installable
-offline PWA, and ZIP backups are planned phases, not completed features.
+**Current milestone: Phase 2 integration, pending hosted Supabase validation.** The
+local MVP is tested. Passwordless login, transactional sync, the migration, and
+local SQL/security tests are implemented. Apply the migration and configure Auth
+using [supabase/SETUP.md](supabase/SETUP.md) before connecting an account. Installable
+offline PWA support and ZIP backups remain planned phases.
 
 ## Run
 
@@ -20,7 +23,10 @@ npm run dev
 On a normal clone, use its own checkout directory instead. The cloud sandbox has
 a read-only home directory: use `npm --cache /tmp/occlude-npm-cache ci` there.
 No environment variables, accounts, Docker, or external services are needed for
-Phase 1. HTTPS or a loopback address is required for browser clipboard/crypto APIs.
+local-only use. For cloud sync, copy `.env.example` to `.env.local` if that file
+does not exist, then follow the Supabase setup instructions. Both example values
+are public browser configuration; never supply an elevated secret key. HTTPS or a
+loopback address is required for browser clipboard/crypto APIs.
 
 ```sh
 npm run build
@@ -60,29 +66,34 @@ light/dark/system theme, and a persistent-storage request.
 Images and review history are stored explicitly in IndexedDB. A loaded app can
 create cards and record reviews without connectivity. Reloading a completely
 offline app shell is a Phase 3 feature. Phase 1 data belongs to this browser
-profile only: there is no account, device sync, export, or backup yet. Keep original
-screenshots and do not clear website data. Storage persistence is browser-dependent.
+profile until you explicitly connect it to an account. Once configured, connected
+workspaces queue changes durably, synchronize with Supabase, and retain local
+review history. Export/backup is still pending. Keep original screenshots and do
+not clear website data while changes are pending. Storage persistence is
+browser-dependent. See SYNC_DESIGN.md for account locking and conflict behavior.
 
 The scheduler is pinned to ts-fsrs 5.4.2 with fuzz disabled. Immutable events are
 ordered by UTC timestamp then event ID and schedules are replayed deterministically.
-This establishes local data integrity; it does not claim multi-device sync works.
+SQL and independent-device integration tests establish local protocol behavior;
+hosted multi-device behavior still requires the deployment checks in SETUP.md.
 
-## Next: Supabase boundary
+## Supabase setup boundary
 
-Phase 2 needs an actual Supabase project before authentication, migrations, Storage,
-and cross-device behavior can be integrated and tested:
+The public project configuration is provided in `.env.example`. The remaining
+required action is applying the migration and enabling email authentication:
 
 1. Create a Supabase project; record the project URL and **publishable/anon** key
    from its API settings. Never use a service-role key in the frontend.
 2. Supply public client configuration as `VITE_SUPABASE_URL` and
    `VITE_SUPABASE_PUBLISHABLE_KEY` through environment settings or a local ignored
-   `.env.local`. Phase 1 does not read these variables yet.
-3. Enable email authentication. When Phase 2 is implemented, allow its development
+   `.env.local`. The app validates these settings before building or starting.
+3. Enable email authentication. Allow its development
    origin and final Cloudflare Pages HTTPS origin in Auth redirect settings. Use
    test accounts for automated isolation and device-sync tests.
-4. Apply the versioned migrations delivered in Phase 2 to the chosen project, then
+4. Apply `supabase/migrations/202610170001_initial_sync.sql` to the chosen project, then
    run RLS, private-storage, and sync-recovery acceptance checks. No migrations
-   have been applied or cloud security claimed in this milestone.
+   have been applied to the hosted project by the agent. See the exact dashboard
+   steps and Ubuntu commands in [supabase/SETUP.md](supabase/SETUP.md).
 
 ## GitHub and a hosted website
 

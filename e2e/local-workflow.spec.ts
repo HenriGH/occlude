@@ -146,3 +146,30 @@ test('file validation, settings and mobile navigation', async ({ page }) => {
   await expect(page.locator('html')).toHaveClass('dark')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
+
+test('cloud configuration is visible and signed-out cache stays locked without losing cards', async ({ page }) => {
+  await page.goto('/')
+  await upload(page); await draw(page, .1, .2)
+  await page.getByRole('button', { name: '1 Karte speichern' }).click()
+  await page.getByRole('button', { name: 'Einstellungen', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Cloud-Synchronisierung', exact: true })).toBeVisible()
+  const email = page.getByRole('textbox', { name: 'E-Mail-Adresse', exact: true })
+  if (await email.count()) {
+    await expect(email).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Anmeldelink senden', exact: true })).toBeDisabled()
+  } else await expect(page.getByText(/Kopiere .env.example/)).toBeVisible()
+  await page.screenshot({ path: 'test-results/cloud-settings.png', fullPage: true })
+  await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('occlude'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error) })
+    await new Promise<void>((resolve, reject) => {
+      const tx = database.transaction('syncMeta', 'readwrite')
+      tx.objectStore('syncMeta').put({ key: 'connection', value: { userId: '00000000-0000-4000-8000-000000000001', email: 'owner@example.test', locked: true } })
+      tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error)
+    })
+    database.close()
+  })
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Dein Lernraum ist gesperrt.', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Bild mit 1 Karten bearbeiten' })).toHaveCount(0)
+  expect((await counts(page)).cards).toBe(1)
+})

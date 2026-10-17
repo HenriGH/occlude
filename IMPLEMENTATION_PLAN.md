@@ -12,11 +12,14 @@
 
 ## Phase 2 — cloud synchronization
 
-- [ ] Provision Supabase project and public client configuration
-- [ ] Email authentication, migrations, validated transactional RPC and RLS
-- [ ] Private image storage, durable outbox, retry/recovery/tombstones
-- [ ] Canonical event replay and multi-device convergence
-- [ ] Two-user security and interrupted-operation tests
+- [x] Project URL and public client configuration; secret keys excluded
+- [x] Email authentication UI, migrations, validated transactional RPC and RLS code
+- [x] Private image storage integration, durable outbox, retry/recovery/tombstones
+- [x] Canonical event replay and two-independent-database convergence tests
+- [x] Local PostgreSQL two-user security and interrupted-operation tests
+- [ ] Apply migration to hosted Supabase and configure Auth redirect URLs
+- [ ] Verify real email login, Storage HTTP behavior and two physical devices
+- [ ] Verify hosted two-user access isolation and lost-ack recovery
 
 ## Phase 3 — offline PWA
 
@@ -50,6 +53,28 @@ used. All generated outputs are ignored. Project source is maintained on the
 GitHub repository's main branch; environment publication and Git pushes are
 separate operations. See README.md for static hosting setup.
 
-Next is Phase 2. Supply an actual Supabase project URL and publishable/anon key via
-environment settings; see README.md. No cloud synchronization, RLS/storage security,
-full offline PWA restart, or export/import acceptance is claimed yet.
+Phase 1 required no cloud service; its initial completion did not claim live
+cloud synchronization, full offline PWA restart, or export/import acceptance.
+
+## Phase 2 implementation report — 2026-10-17
+
+Implemented `src/sync/`, the cloud settings UI, version-2 Dexie outbox/meta stores,
+transactional mutation integration, account locking, private lazy image retrieval,
+and `supabase/migrations/202610170001_initial_sync.sql`. Setup is documented in
+`supabase/SETUP.md`. Only the supplied public client settings are retained.
+
+Local SQL tests exercise RLS, RPC privileges, immutable events, operation
+idempotency, cross-user FK rejection, storage ownership and geometry validation.
+Independent-device tests use the actual SQL RPC and separate Dexie databases,
+including both offline reconnect orders, interrupted image uploads, lost
+acknowledgments, metadata conflict resolution and preservation of deleted-target
+history. These do not claim hosted Supabase Auth/Storage have been validated.
+
+Validation: build passed; 40 unit/SQL/integration tests and 5 production-browser
+scenarios passed. The setup script completed a frozen installation and checks.
+
+Remaining external boundary: apply the migration in Supabase SQL Editor, configure
+email redirects, and verify with real accounts. The current cloud machine's
+network proxy denied the project hostname (CONNECT 403); the necessary domain and
+public variable requirements are saved in the environment draft. Phase 3 remains
+pending until live Phase 2 checks complete.

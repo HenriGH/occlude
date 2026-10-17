@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Check, Eye, Layers } from 'lucide-react'
 import { db, rateCard } from '../db'
 import { scheduler, type Flashcard, type Grade } from '../domain'
 import { ImageSurface } from './ImageSurface'
+import { ensureImageAsset } from '../sync/runtime'
 
 function interval(due: Date, now: Date) {
   const minutes = Math.max(1, Math.round((+due - +now) / 60000))
@@ -16,6 +17,7 @@ export function Review({ ids, deckName, onClose, onError }: { ids: string[]; dec
   const [revealed, setRevealed] = useState(false)
   const [busy, setBusy] = useState(false)
   const locked = useRef(false)
+  const [assetError, setAssetError] = useState('')
   const data = useLiveQuery(async () => {
     const card = ids[index] ? await db.cards.get(ids[index]) : undefined
     if (!card) return null
@@ -24,6 +26,13 @@ export function Review({ ids, deckName, onClose, onError }: { ids: string[]; dec
     const regions = await db.regions.where('imageId').equals(card.imageId).toArray()
     return { card, asset, regions }
   }, [ids, index])
+  useEffect(() => { setAssetError('') }, [index])
+  useEffect(() => {
+    if (!data || data.asset || assetError) return
+    let cancelled = false
+    ensureImageAsset(data.card.imageId).catch(e => { if (!cancelled) setAssetError(e instanceof Error ? e.message : 'Das Bild konnte nicht geladen werden.') })
+    return () => { cancelled = true }
+  }, [data?.card.id, data?.asset, assetError])
   async function rate(grade: Grade) {
     if (locked.current || !revealed || !data?.asset) return
     locked.current = true; setBusy(true)
@@ -46,7 +55,7 @@ export function Review({ ids, deckName, onClose, onError }: { ids: string[]; dec
     <div className="review-progress"><div style={{ width: `${ids.length ? index / ids.length * 100 : 100}%` }} /></div>
     {complete ? <div className="session-complete"><span className="success-emblem"><Check size={40} /></span><p className="eyebrow">GUT GEMACHT</p><h1>Ein Stück mehr im Kopf.</h1><p className="muted">{index} {index === 1 ? 'Karte wiederholt' : 'Karten wiederholt'}. Dein Fortschritt ist auf diesem Gerät gespeichert.</p><p className="muted small">Karten mit „Nochmal“ erscheinen wieder, sobald sie fällig sind.</p><button className="button primary" onClick={onClose}>Zur Übersicht <ArrowRight size={17} /></button></div> : <>
       <div className="review-instruction"><p className="eyebrow">{revealed ? 'WIE GUT WUSSTEST DU ES?' : 'EIN MOMENT FÜR DEIN GEDÄCHTNIS'}</p><h1>{revealed ? 'Alles wieder da?' : 'Was verbirgt sich hier?'}</h1><p className="muted">{revealed ? 'Bewerte deine Antwort ehrlich. Den Rest übernimmt dein Lernplan.' : 'Erinnere dich an den grün markierten Bereich.'}</p></div>
-      {data === undefined ? <p role="status">Karte wird geladen …</p> : !data?.asset ? <div className="empty-panel"><h2>{data ? 'Bild auf diesem Gerät nicht verfügbar' : 'Diese Karte wurde gelöscht'}</h2><p>Die Karte kann gerade nicht bewertet werden.</p><button className="button" onClick={() => { setIndex(i => i + 1); setRevealed(false) }}>Überspringen</button></div> : <>
+      {data === undefined ? <p role="status">Karte wird geladen …</p> : !data?.asset ? <div className="empty-panel"><h2>{data ? 'Bild auf diesem Gerät nicht verfügbar' : 'Diese Karte wurde gelöscht'}</h2><p>{assetError || (data ? 'Das Originalbild wird geladen …' : 'Die Karte kann gerade nicht bewertet werden.')}</p>{data && assetError && <button className="button" onClick={() => setAssetError('')}>Bild erneut laden</button>}<button className="button" onClick={() => { setIndex(i => i + 1); setRevealed(false) }}>Überspringen</button></div> : <>
         <div className={`review-image ${revealed ? 'revealed' : ''}`}><ImageSurface key={data.card.id} asset={data.asset} regions={data.regions} targetId={data.card.regionId} revealed={revealed} /></div>
         <div className="review-actions">{revealed ? <RatingButtons card={data.card} busy={busy} onRate={rate} /> : <><button className="button primary reveal-button" onClick={() => setRevealed(true)}><Eye size={19} /> Antwort zeigen <kbd>Leertaste</kbd></button><p className="muted small">Andere Masken bleiben verdeckt.</p></>}</div>
       </>}

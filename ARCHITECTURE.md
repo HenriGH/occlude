@@ -3,9 +3,10 @@
 ## Scope and phases
 
 Occlude turns a pasted screenshot into independent image-occlusion cards. The
-interface is German. Phase 1 is a local application; no authentication or cloud
-service is needed. Cloud sync, installability, and portable backups follow in that
-order. Do not mistake local persistence for a complete offline PWA.
+interface is German. Local-only use requires no authentication or cloud service.
+Phase 2 adds the Supabase integration and is pending hosted-project validation.
+Installability and portable backups follow. Local persistence is not a complete
+offline PWA.
 
 ## Client
 
@@ -26,12 +27,16 @@ by `(reviewedAt, id)` for deterministic concurrent-event reconciliation. All FSR
 fields are retained. Day boundaries use local calendar arithmetic, including DST.
 Review transactions atomically append an event and update the derived schedule.
 
-## Planned cloud boundary
+## Cloud integration boundary
 
 Supabase Auth establishes ownership. PostgreSQL and private Storage are the cloud
-authority. A durable outbox, idempotent SQL RPC, and ordered event replay reconcile
-local data; see SYNC_DESIGN.md and DATABASE.md. Credentials are not needed for
-Phase 1. Never include a service-role key in the client.
+authority. A durable outbox, idempotent SQL RPC, base-version checks, and ordered
+event replay reconcile local data; see SYNC_DESIGN.md and DATABASE.md. The server
+stores canonical replay inputs rather than accepting derived FSRS snapshots.
+Existing local data is adopted only after explicit account binding. Every browser
+workspace stays bound to one account; sign-out locks it and retains pending work.
+The migration must be applied using supabase/SETUP.md before hosted validation.
+No service-role/secret key is included in the client.
 
 ## Risks and tradeoffs
 

@@ -16,6 +16,7 @@ export async function prepareImage(file: Blob): Promise<Asset> {
     if (!ctx) throw new Error('Die Bildverarbeitung ist in diesem Browser nicht verfügbar.')
     ctx.drawImage(bitmap, 0, 0)
     const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('Das Bild konnte nicht verarbeitet werden.')), 'image/webp', 0.96))
+    if (blob.size > MAX_FILE_BYTES) throw new Error('Das verarbeitete Bild ist größer als 15 MB. Bitte einen kleineren Screenshot verwenden.')
     const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())
     const hash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')
     return { hash, blob, width: bitmap.width, height: bitmap.height, mimeType: blob.type }

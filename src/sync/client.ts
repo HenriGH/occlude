@@ -1,0 +1,10 @@
+import { createClient } from '@supabase/supabase-js'
+import { publicConfiguration } from './config'
+
+export let configuration: ReturnType<typeof publicConfiguration> = null
+export let configurationError = ''
+try { configuration = publicConfiguration(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) }
+catch (e) { configurationError = e instanceof Error ? e.message : 'Supabase-Konfiguration ungültig.' }
+export const supabase = configuration ? createClient(configuration.url, configuration.key, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
+}) : null
