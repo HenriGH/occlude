@@ -1,28 +1,18 @@
-import { useState, type FormEvent } from 'react'
-import { Cloud, LogIn, LogOut, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
+import { Cloud, LogOut, RefreshCw } from 'lucide-react'
 import { db } from '../db'
-import { configurationError, supabase } from '../sync/client'
+import { configuration, configurationError, supabase } from '../sync/client'
 import { cloudEngine } from '../sync/runtime'
 import type { CloudState } from '../sync/useCloud'
+import { EmailSignIn } from './EmailSignIn'
 
 export function CloudSettings({ cloud, onError }: { cloud: CloudState; onError: (e: unknown) => void }) {
-  const [email, setEmail] = useState('')
-  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
-  async function action(work: () => Promise<unknown>) { setBusy(true); setNotice(''); try { await work() } catch (e) { onError(e) } finally { setBusy(false) } }
-  async function login(e: FormEvent) {
-    e.preventDefault()
-    await action(async () => {
-      if (!supabase) return
-      const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: location.origin } })
-      if (error) throw new Error(`Anmeldung fehlgeschlagen: ${error.message}`)
-      setNotice('Anmeldelink gesendet. Öffne ihn im selben Browser auf diesem Gerät. Bitte auch im Spam-Ordner nachsehen.')
-    })
-  }
+  async function action(work: () => Promise<unknown>) { setBusy(true); try { await work() } catch (e) { onError(e) } finally { setBusy(false) } }
   return <div className="settings-card cloud-settings"><h2><Cloud size={20} />Cloud-Synchronisierung</h2>
     {!supabase ? <p className="muted">{configurationError || 'Kopiere .env.example nach .env.local und starte die App neu, um dein Supabase-Projekt zu verbinden.'}</p> : <>
       {cloud.authError && <p role="alert" className="cloud-error">{cloud.authError}</p>}
-      {!cloud.authReady ? <p className="muted" role="status">Anmeldung wird geladen …</p> : !cloud.session ? <form onSubmit={e => void login(e)} className="login-form"><p className="muted">Melde dich auf deinen Geräten mit derselben E-Mail-Adresse an. Deine Karten bleiben lokal nutzbar.</p><label>E-Mail-Adresse<input type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="du@uni.de" /></label><button className="button primary" type="submit" disabled={busy || !email.trim()}><LogIn size={16} />{busy ? 'Wird gesendet …' : 'Anmeldelink senden'}</button></form> : <>
+      {!cloud.authReady ? <p className="muted" role="status">Anmeldung wird geladen …</p> : !cloud.session ? <EmailSignIn auth={supabase.auth} projectUrl={configuration!.url} /> : <>
         <p className="cloud-account">Angemeldet als <strong>{cloud.session.user.email}</strong></p>
         {cloud.connection && cloud.session.user.id !== cloud.connection.userId ? <p className="cloud-error" role="alert">Dieses Gerät ist mit {cloud.connection.email} verbunden. Bitte mit diesem Konto anmelden. Lokale Daten werden nicht mit einem anderen Konto vermischt.</p> : !cloud.connection || cloud.connection.locked ? <><p className="muted">{cloud.connection ? 'Verbinde das ursprüngliche Konto erneut, um deine lokalen Karten zu entsperren.' : 'Verbinde dieses Gerät. Vorhandene lokale Karten werden in dein Konto übernommen; Karten anderer Geräte werden geladen.'}</p><button className="button primary" disabled={busy} onClick={() => void action(async () => {
           if (!cloud.connection && !confirm('Dieses Gerät mit dem angemeldeten Konto verbinden und vorhandene lokale Karten hochladen? Die Zuordnung bleibt für dieses Browserprofil bestehen.')) return
@@ -41,7 +31,6 @@ export function CloudSettings({ cloud, onError }: { cloud: CloudState; onError: 
           if (error) throw new Error('Abmeldung aus der Cloud fehlgeschlagen. Lokale Daten sind gesperrt; bitte erneut versuchen.')
         })}><LogOut size={15} />Auf diesem Gerät abmelden</button>
       </>}
-      {notice && <p className="cloud-notice" role="status">{notice}</p>}
     </>}
     <p className="settings-warning">Ein Gerät bleibt einem Konto zugeordnet. Abmelden sperrt die lokale Ansicht und löscht keine ausstehenden Lernereignisse. Browserdaten sind keine verschlüsselte Datensicherung. Ein vollständiger Offline-Neustart und ein eigener Export sind noch nicht verfügbar.</p>
   </div>

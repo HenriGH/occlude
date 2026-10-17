@@ -29,8 +29,63 @@ No SQL has been applied to the hosted project by the coding agent.
 4. Supabase's default email delivery has development rate limits. Use its supported
    custom SMTP configuration when needed. No SMTP credentials belong in this repo.
 
-The app sends a passwordless email link only when the user presses the login
-button. Open the link in the SAME browser/profile that requested it (PKCE).
+The app requests a passwordless email only when the user presses the login button.
+It can verify a numeric code directly. If using a link instead, open it in the SAME
+browser/profile and website origin that requested it (PKCE).
+
+### Production address and email-code recovery
+
+For this deployment, use these settings in **Authentication → URL Configuration**:
+
+- Site URL: `https://occlude.henschau2005.workers.dev/`
+- Redirect URLs: `https://occlude.henschau2005.workers.dev/**` and
+  `http://localhost:5173/**` if development login is still needed.
+
+The wildcard is confined to the exact owned host and allows the SDK's callback
+query parameters. Do not use a wildcard permitting arbitrary websites. A localhost
+session uses a different browser origin/storage from the deployed website; closing
+it or switching recipients does not reset project-wide mail quotas.
+
+The app also accepts a numeric email OTP without following a verification link.
+In **Authentication → Email → Templates**, add the contents of
+`supabase/email-template.html` to both **Magic Link** and **Confirm signup** templates.
+Use a subject such as “Dein Occlude-Anmeldecode”. `{{ .Token }}` is Supabase's
+template variable: leave it literally as shown. Request one NEW email after saving
+the templates; previously sent emails cannot be changed. Enter its code beside the
+same email address in the app. This avoids redirect and link-scanner dependencies.
+The code is not written to application storage. If retaining a clickable link,
+use Supabase's `{{ .ConfirmationURL }}` rather than constructing an API path by hand.
+
+### Mail limits and a custom SMTP provider
+
+Supabase's built-in SMTP is intended for testing, has a very low project-wide
+quota, and restricts recipients to authorized project-team addresses. It is not a
+reliable production sender for arbitrary university addresses. Quotas can change;
+check the current project settings and official SMTP/rate-limit documentation:
+
+- https://supabase.com/docs/guides/auth/auth-smtp
+- https://supabase.com/docs/guides/auth/rate-limits
+
+Configure a supported SMTP provider (for example Brevo, Resend, or an existing
+transactional mail service) under **Authentication → Email / SMTP Settings**.
+Verify its sender/domain as required by that provider; a `workers.dev` website
+address does not give you ownership of a sender's mail domain. Enter SMTP host,
+port, username/password, sender email and name ONLY in the Supabase dashboard.
+No SMTP credentials or elevated API keys belong in Vite variables or this repo.
+
+After enabling custom SMTP, set **Authentication → Rate Limits → Email sending**
+to a suitable value, initially 30–60 messages per hour for this personal app,
+within the provider's own quota. Increasing a frontend setting cannot raise this
+limit, and enabling SMTP may not immediately clear a currently exhausted bucket.
+The app enforces a 60-second local send pause across reloads, recipient changes,
+and tabs on the same origin. It explains rate-limit errors, but this pause does
+not promise that the server quota resets after one minute. Existing codes can be
+verified during the pause, without requesting another email.
+
+“Requested path is invalid” while opening a mail link does not by itself prove
+which setting is wrong. Check the Site URL, allowed redirects and link template;
+the code option is a recovery path. The agent could not inspect live dashboard
+settings because this environment's proxy denied the hosted project/website.
 
 ## 3. Update the app on Ubuntu
 
@@ -50,7 +105,7 @@ never contain an elevated secret key. Run `npm run dev`; restart Vite after edit
 environment variables.
 
 In the app, open **Einstellungen → Cloud-Synchronisierung**, enter your email,
-and press **Anmeldelink senden**. Open the email link in that browser, then press
+and press **Anmelde-E-Mail senden**. Enter its code (or open the link in that browser), then press
 **Dieses Gerät verbinden**. Existing local cards and history are adopted only
 after explicit confirmation. If the migration is missing, connection shows a
 specific error and the existing local workspace remains usable.

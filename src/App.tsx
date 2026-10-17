@@ -10,6 +10,7 @@ import { useBlobUrl } from './components/ImageSurface'
 import { useCloud, type CloudState } from './sync/useCloud'
 import { CloudSettings } from './components/CloudSettings'
 import { ensureImageAsset } from './sync/runtime'
+import { returningFromAuth } from './sync/client'
 
 type View = 'dashboard' | 'library' | 'create' | 'settings'
 function deckPath(decks: Deck[], id: string): string {
@@ -20,7 +21,7 @@ function deckPath(decks: Deck[], id: string): string {
 
 export default function App() {
   const cloud = useCloud()
-  const [view, setView] = useState<View>('dashboard')
+  const [view, setView] = useState<View>(returningFromAuth ? 'settings' : 'dashboard')
   const [draft, setDraft] = useState<DraftImage | null>(null)
   const [draftVersion, setDraftVersion] = useState(0)
   const [session, setSession] = useState<{ ids: string[]; name: string } | null>(null)

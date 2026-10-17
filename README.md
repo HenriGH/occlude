@@ -79,6 +79,12 @@ hosted multi-device behavior still requires the deployment checks in SETUP.md.
 
 ## Supabase setup boundary
 
+The current hosted origin is `https://occlude.henschau2005.workers.dev/`. The app
+supports direct numeric email-code login as well as links. For invalid-link or
+mail-limit errors, follow the production redirect, code-template and custom SMTP
+steps in [supabase/SETUP.md](supabase/SETUP.md). The built-in test sender's quota
+cannot be increased by changing frontend code.
+
 The public project configuration is provided in `.env.example`. The remaining
 required action is applying the migration and enabling email authentication:
 

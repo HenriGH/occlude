@@ -156,7 +156,7 @@ test('cloud configuration is visible and signed-out cache stays locked without l
   const email = page.getByRole('textbox', { name: 'E-Mail-Adresse', exact: true })
   if (await email.count()) {
     await expect(email).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Anmeldelink senden', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Anmelde-E-Mail senden', exact: true })).toBeDisabled()
   } else await expect(page.getByText(/Kopiere .env.example/)).toBeVisible()
   await page.screenshot({ path: 'test-results/cloud-settings.png', fullPage: true })
   await page.evaluate(async () => {

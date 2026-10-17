@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Session } from '@supabase/supabase-js'
 import { db } from '../db'
-import { supabase } from './client'
+import { initialAuthError, supabase } from './client'
+import { authFeedback } from './authFeedback'
 import { cloudEngine } from './runtime'
 import type { Connection, SyncStatus } from './model'
 
 export function useCloud() {
   const [session, setSession] = useState<Session | null>(null)
   const [authReady, setAuthReady] = useState(!supabase)
-  const [authError, setAuthError] = useState('')
+  const [authError, setAuthError] = useState(initialAuthError)
   const local = useLiveQuery(async () => ({
     connection: (await db.syncMeta.get('connection'))?.value as Connection | undefined,
     status: ((await db.syncMeta.get('status'))?.value as SyncStatus | undefined) ?? {},
@@ -18,13 +19,16 @@ export function useCloud() {
   useEffect(() => {
     if (!supabase) return
     let mounted = true
+    // getSession alone does not surface URL-exchange initialization failures.
+    supabase.auth.initialize().then(({ error }) => { if (mounted && error) setAuthError(initialAuthError || authFeedback(error)) }).catch(() => { if (mounted) setAuthError('Der Anmeldelink konnte nicht verarbeitet werden. Bitte den E-Mail-Code verwenden.') })
     supabase.auth.getSession().then(({ data, error }) => {
       if (!mounted) return
       setSession(data.session); setAuthReady(true)
-      if (error) setAuthError('Cloud-Anmeldung ist gerade nicht verfügbar. Lokale Daten bleiben erhalten.')
+      if (error) setAuthError(initialAuthError || authFeedback(error))
     }).catch(() => { if (mounted) { setAuthReady(true); setAuthError('Cloud-Anmeldung nicht verfügbar.') } })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, next) => {
       setSession(next); setAuthReady(true)
+      if (event === 'SIGNED_IN') setAuthError('')
       if (event === 'SIGNED_OUT') {
         // Do not await Supabase APIs inside this auth callback.
         void db.transaction('rw', db.syncMeta, async () => {

@@ -81,3 +81,24 @@ guard; the production run validates the final code. Frozen npm ci/setup succeede
 
 Production hosting, hosted Supabase services, browser installation, service-worker caching, Safari,
 and physical-device performance have not been validated in Phase 1.
+
+## Authentication recovery
+
+EmailSignIn component tests verify project-wide error feedback, a persisted
+60-second send pause across reload/recipient changes, duplicate-submit prevention,
+cross-tab pause updates, code verification during a send pause, and no automatic
+resend after an expired code. Error-mapping tests cover callback parameters and
+SDK errors without echoing tokens or URLs. Initialization errors are inspected
+explicitly because getSession alone does not surface a failed URL exchange.
+
+`e2e/auth-recovery.spec.ts` uses the real Supabase browser SDK with intercepted
+HTTP responses. It verifies code-to-session login, callback-error recovery, and a
+429 mail limit across reload and email changes. Every external request is either
+mocked or aborted: no login emails are sent and no live Auth success is claimed.
+Hosted redirect and SMTP settings remain dashboard actions in supabase/SETUP.md.
+
+Authentication recovery validation on 2026-10-17: build passed; all 49 automated
+tests and all 7 production-browser scenarios passed. An initial browser failure
+exposed the SDK's nested callback error code being replaced by a generic message;
+the handler was corrected and both recovery scenarios were rerun successfully
+before the complete production-browser run.

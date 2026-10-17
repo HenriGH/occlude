@@ -1,5 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { publicConfiguration } from './config'
+import { callbackFailure, isAuthReturn } from './authFeedback'
+
+export const initialAuthError = typeof location !== 'undefined' ? callbackFailure(location.href) : ''
+export const returningFromAuth = typeof location !== 'undefined' && isAuthReturn(location.href)
 
 export let configuration: ReturnType<typeof publicConfiguration> = null
 export let configurationError = ''
