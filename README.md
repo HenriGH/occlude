@@ -57,6 +57,11 @@ primary actions, selected tools and occlusion masks. Light surfaces use darker
 green for small action text and focus rings; dark surfaces use the pale accent.
 The surrounding interface keeps its neutral light/dark appearance.
 
+Material accents give primary actions a raised edge and pressed state, with
+soft satin shading on study/folder cards. Floating controls use a restrained
+frosted surface; the mobile gesture inset stays solid. Masks remain opaque.
+Reduced motion/transparency preferences and opaque blur fallbacks are supported.
+
 ## Run
 
 Use Node 24.19 (see `.node-version`; minimum Node 22.12) and npm.

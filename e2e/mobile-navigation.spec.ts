@@ -81,7 +81,7 @@ for (const device of ['Pixel 7', 'iPhone 13']) {
       await expect(page.getByRole('heading', { name: 'Übersicht', exact: true })).toBeVisible()
       await expect(overview).toHaveAttribute('aria-current', 'page')
       expect(await page.evaluate(() => scrollY)).toBe(0)
-      await expect(tabs).toHaveCSS('background-color', 'rgb(0, 0, 0)')
+      await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(0, 0, 0)')
       await page.screenshot({ path: `test-results/mobile-tabs-${device.replaceAll(' ', '-')}-dark.png`, fullPage: true })
       await page.setViewportSize({ width: 320, height: 640 })
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

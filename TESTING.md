@@ -314,3 +314,19 @@ button are absent and that the main title occupies the recovered space. Existing
 background-sync scenarios still exercise editing, saving and review while Auth,
 pulls and pushes stall, then verify queued work drains successfully. Sync details
 remain available in settings.
+
+## Material accents
+
+Build and the 10 existing minimal-UI, mobile-navigation and system-bar scenarios
+passed. The bottom safe-area pixel checks remain unchanged: transparency is
+limited to the controls above the solid gesture inset, with a small overlap to
+avoid fractional-pixel seams. The navigation theme check now reads the page
+canvas because the bar itself is translucent.
+
+Seeded desktop/mobile captures were reviewed in both appearances. A browser
+check sampled the three primary-button gradient colors against its text color
+(minimum 9.34:1), verified the keyboard focus outline, and confirmed no button
+translation with reduced motion. Emulating reduced transparency produced an
+opaque surface with no backdrop filter. Blur is limited to floating controls;
+study images and occlusion masks keep their existing opaque rendering. This
+change adds CSS only, with no animation loop, assets or runtime dependencies.
