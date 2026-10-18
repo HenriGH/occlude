@@ -59,6 +59,31 @@ them, pass safe insets to the layout, and update system-icon appearance with the
 app theme. It requires an Android build/distribution, rather than a website-only
 deployment. No native package is included or claimed tested by this change.
 
-The remaining device check needs the installation browser/version and Android
-version, followed by checking the deployed app on that phone. If a strip remains,
-distinguish an area outside the web viewport from the now-continuous page inset.
+## Pixel 10 follow-up
+
+The user reports that the updated page is seamless in the mobile browser, but
+the strip persists after installation on a Pixel 10 with current Chrome and
+Android. Occlude is dark while Android itself is light. This is a user-reported
+device result, not a locally reproduced Android test; no exact build numbers or
+native window measurements are available.
+
+This distinction is consistent with the separate installed-app window path
+described above. The web-viewport fix must not be described as a fix for the
+remaining native strip. Another CSS inset, manifest identity change, or reinstall
+does not provide the missing native window control. Keep the working browser
+layout and visible status bar rather than introducing fullscreen as a workaround.
+
+For reliable control independent of Chrome's installed-app rollout, the next
+implementation would be a separately installed Android host. That is a packaging
+and distribution change, not another website deployment. It would need to:
+
+- Draw a WebView behind transparent system bars without hiding either bar.
+- Supply current status, cutout, navigation and keyboard insets to the web layout.
+- Match status/navigation icon appearance to Occlude's selected theme.
+- Preserve uploads, Android Back navigation, local storage and account sync.
+- Be built and checked on Android, including light Android with dark Occlude.
+
+A separate WebView has its own storage, so it cannot silently inherit the Chrome
+installation's local cards or login. Account sync would provide the transfer path.
+No Android host is included in this website-only change, and no real-device fix
+for the installed Chrome window is claimed.
