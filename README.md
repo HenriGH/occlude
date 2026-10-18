@@ -100,6 +100,8 @@ and gaps. The app does not have a service worker in Phase 1.
 
 Editor shortcuts: **R** draw, **V** select/move/resize, **H** pan, Delete remove the
 selected mask, Ctrl/Cmd+Z undo. Use zoom controls, the wheel, or two fingers to zoom.
+After drawing, the selected mask's corner handle is immediately available for
+resizing. Drawing on an empty part of the image continues creating new masks.
 During review, Space reveals and keys 1–4 rate. Other masks stay covered.
 
 Click a saved image to edit its masks. Moving an existing mask preserves its card

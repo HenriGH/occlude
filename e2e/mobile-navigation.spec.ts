@@ -96,8 +96,18 @@ for (const device of ['Pixel 7', 'iPhone 13']) {
       const surface = page.getByTestId('image-surface')
       await surface.scrollIntoViewIfNeeded()
       let box = (await surface.boundingBox())!
-      await touchDrag(page, session, { x: box.x + box.width * .1, y: box.y + box.height * .7 }, { x: box.x + box.width * .5, y: box.y + box.height * .8 })
+      await touchDrag(page, session, { x: box.x + box.width * .1, y: box.y + box.height * .62 }, { x: box.x + box.width * .5, y: box.y + box.height * .7 })
       await expect(page.getByRole('button', { name: '3 Karten speichern' })).toBeVisible()
+      const selectedMask = page.getByTestId('occlusion-mask').filter({ has: page.locator('[data-resize]') })
+      const selectedId = await selectedMask.getAttribute('data-region')
+      await expect(selectedMask.locator('[data-resize]')).toBeVisible()
+      const corner = (await selectedMask.locator('[data-resize]').boundingBox())!
+      await touchDrag(page, session, { x: corner.x + corner.width / 2, y: corner.y + corner.height / 2 }, { x: corner.x + corner.width / 2 + box.width * .08, y: corner.y + corner.height / 2 + box.height * .06 })
+      await expect(page.getByTestId('occlusion-mask')).toHaveCount(3)
+      await expect(selectedMask).toHaveAttribute('data-region', selectedId!)
+      expect(await selectedMask.evaluate(el => parseFloat(el.style.width))).toBeCloseTo(48, 0)
+      expect(await selectedMask.evaluate(el => parseFloat(el.style.height))).toBeCloseTo(14, 0)
+      await expect(page.getByRole('button', { name: 'Maske zeichnen (R)', exact: true })).toHaveAttribute('aria-pressed', 'true')
       await expect(tabs.locator('[aria-current="page"]')).toHaveCount(0)
       for (const name of ['Bibliothek', 'Übersicht']) {
         page.once('dialog', dialog => dialog.dismiss())

@@ -66,11 +66,12 @@ export function ImageSurface({ asset, regions, onChange, tool = 'pan', selected,
     }
     const element = (e.target as HTMLElement).closest<HTMLElement>('[data-region]')
     const id = element?.dataset.region
+    const resizing = (e.target as HTMLElement).dataset.resize === 'true'
     const p = point(e)
     if (tool === 'pan' || !onChange) gesture.current = { type: 'pan', x: e.clientX, y: e.clientY, pan }
-    else if (tool === 'select' && id) {
+    else if (id && (tool === 'select' || selected === id && resizing)) {
       onSelect?.(id)
-      gesture.current = { type: (e.target as HTMLElement).dataset.resize ? 'resize' : 'move', x: p.x, y: p.y, id, original: regions.find(r => r.id === id), pan }
+      gesture.current = { type: resizing ? 'resize' : 'move', x: p.x, y: p.y, id, original: regions.find(r => r.id === id), pan }
     } else if (tool === 'draw') {
       const rect = { id: crypto.randomUUID(), x: p.x, y: p.y, width: 0, height: 0 }
       setDraft(rect); gesture.current = { type: 'draw', x: p.x, y: p.y, id: rect.id, pan }; onSelect?.()
@@ -112,7 +113,7 @@ export function ImageSurface({ asset, regions, onChange, tool = 'pan', selected,
         {url && <img src={url} alt="Originalbild der Lernkarte" draggable={false} />}
         {shown.map((r, i) => targetId === r.id && revealed ? null : <div key={r.id} data-region={r.id} data-testid={targetId === r.id ? 'target-mask' : 'occlusion-mask'} className={`mask ${targetId ? targetId === r.id ? 'target' : 'other' : 'editing'} ${selected === r.id ? 'selected' : ''}`} style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.width * 100}%`, height: `${r.height * 100}%` }}>
           {(!targetId || r.id === targetId) && <span className={r.label ? 'mask-label' : undefined} title={r.label || undefined}>{r.label || (targetId ? '?' : String(i + 1).padStart(2, '0'))}</span>}
-          {onChange && selected === r.id && tool === 'select' && <i data-resize="true" className="resize-handle" />}
+          {onChange && selected === r.id && tool !== 'pan' && <i data-resize="true" className="resize-handle" />}
         </div>)}
       </div>
     </div>
