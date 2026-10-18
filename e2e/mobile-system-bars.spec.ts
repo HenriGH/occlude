@@ -17,6 +17,34 @@ async function expectBottomBackground(page: Page, color: [number, number, number
   expect(mismatches).toBe(0)
 }
 
+async function expectContinuousNavigation(page: Page) {
+  // A uniform, contrasting backdrop makes a separately filled safe area visible
+  // in real pixels. This checks the page canvas, not Android's native system bar.
+  const backdrop = await page.evaluateHandle(() => {
+    const element = document.createElement('div')
+    element.style.cssText = 'position:fixed;inset:0;z-index:19;background:rgb(20,70,100);pointer-events:none'
+    element.setAttribute('aria-hidden', 'true'); document.body.append(element)
+    return element
+  })
+  try {
+    const box = (await page.getByRole('navigation', { name: 'Mobile Navigation' }).boundingBox())!
+    const screenshot = await page.screenshot({ animations: 'disabled' })
+    const mismatches = await page.evaluate(async ({ encoded, box }) => {
+      const image = new Image(); image.src = `data:image/png;base64,${encoded}`; await image.decode()
+      const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight
+      const ctx = canvas.getContext('2d')!; ctx.drawImage(image, 0, 0)
+      const ratio = image.naturalWidth / innerWidth
+      const x = Math.round(3 * ratio), width = Math.round(5 * ratio)
+      const reference = ctx.getImageData(x, Math.round((box.y + 20) * ratio), width, 1).data
+      const pixels = ctx.getImageData(x, image.naturalHeight - Math.round(34 * ratio), width, Math.round(34 * ratio)).data
+      let mismatches = 0
+      for (let i = 0; i < pixels.length; i += 4) if ([0, 1, 2].some(channel => pixels[i + channel] !== reference[i % (width * 4) + channel])) mismatches++
+      return mismatches
+    }, { encoded: screenshot.toString('base64'), box })
+    expect(mismatches).toBe(0)
+  } finally { await backdrop.evaluate(element => element.remove()); await backdrop.dispose() }
+}
+
 for (const device of ['Pixel 7', 'iPhone 13']) {
 test(`bottom safe area follows the app appearance across scroll and a cold dark launch (${device})`, async ({ browser }) => {
   const context = await browser.newContext({ ...devices[device], colorScheme: 'light', baseURL: test.info().project.use.baseURL })
@@ -50,10 +78,10 @@ test(`bottom safe area follows the app appearance across scroll and a cold dark 
     expect(manifest.background_color).toBe('#f5f5f7')
     await page.getByRole('button', { name: 'Einstellungen', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Dunkel', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    for (const [appearance, scheme, background, rgb] of [
-      ['Dunkel', 'dark', '#000000', [0, 0, 0]],
-      ['Hell', 'light', '#f5f5f7', [245, 245, 247]],
-      ['Dunkel', 'dark', '#000000', [0, 0, 0]],
+    for (const [appearance, scheme, background] of [
+      ['Dunkel', 'dark', '#000000'],
+      ['Hell', 'light', '#f5f5f7'],
+      ['Dunkel', 'dark', '#000000'],
     ] as const) {
       await page.getByRole('button', { name: appearance, exact: true }).click()
       await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', scheme)
@@ -72,7 +100,7 @@ test(`bottom safe area follows the app appearance across scroll and a cold dark 
       expect((await session.send('Page.getAppManifest')).errors).toHaveLength(0)
       expect(await page.locator('.main-content').evaluate(el => parseFloat(getComputedStyle(el).paddingBottom))).toBeGreaterThanOrEqual(62)
       await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight))
-      await expectBottomBackground(page, [...rgb])
+      await expectContinuousNavigation(page)
       if (appearance === 'Hell') {
         await page.reload()
         await page.getByRole('button', { name: 'Einstellungen', exact: true }).click()
@@ -98,7 +126,7 @@ test(`bottom safe area follows the app appearance across scroll and a cold dark 
     await expect(page.getByRole('heading', { name: 'Übersicht', exact: true })).toBeVisible()
     await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', 'dark')
     await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight))
-    await expectBottomBackground(page, [0, 0, 0])
+    await expectContinuousNavigation(page)
     await createLocalLibrary(page)
     await page.getByRole('button', { name: 'Lernen', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Antwort zeigen' })).toBeVisible()

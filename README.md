@@ -40,9 +40,12 @@ The page canvas, body, app root and color-scheme metadata use the selected
 appearance from the first paint. The active installation manifest also follows
 the app appearance, including when Occlude is dark and Android itself is light.
 Both light/dark manifests keep the same app ID, scope, start URL and icons;
-standalone mode keeps the system status bar. Android/Chrome still controls the
-native navigation area and may retain old colors until its installed-app metadata
-updates. A page theme switch cannot force an immediate native APK update.
+standalone mode keeps the system status bar. The bottom glass surface now covers
+the entire web viewport, including its safe area; only the controls are inset.
+Android/Chrome controls whether an installed PWA can draw behind the native
+navigation bar. `viewport-fit=cover` already opts in where supported; it cannot
+force a host browser to allow it. See [Android system bars](docs/android-system-bars.md)
+for the distinction and the native edge-to-edge alternative.
 
 The default logo uses the white outline and pale-green occlusion mark. Browser
 and installation icons use this version on a neutral dark background for contrast
@@ -58,8 +61,9 @@ green for small action text and focus rings; dark surfaces use the pale accent.
 The surrounding interface keeps its neutral light/dark appearance.
 
 Material accents give primary actions a raised edge and pressed state, with
-soft satin shading on study/folder cards. Floating controls use a restrained
-frosted surface; the mobile gesture inset stays solid. Masks remain opaque.
+soft satin shading on study/folder cards. Contact and diffuse shadows anchor
+buttons and larger panels to the canvas. Floating controls use a restrained
+frosted surface that continues through the mobile gesture inset. Masks remain opaque.
 Reduced motion/transparency preferences and opaque blur fallbacks are supported.
 
 ## Run

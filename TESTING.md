@@ -318,9 +318,8 @@ remain available in settings.
 ## Material accents
 
 Build and the 10 existing minimal-UI, mobile-navigation and system-bar scenarios
-passed. The bottom safe-area pixel checks remain unchanged: transparency is
-limited to the controls above the solid gesture inset, with a small overlap to
-avoid fractional-pixel seams. The navigation theme check now reads the page
+passed. This first version kept the gesture inset solid; the continuous-surface
+revision below replaces that fill. The navigation theme check reads the page
 canvas because the bar itself is translucent.
 
 Seeded desktop/mobile captures were reviewed in both appearances. A browser
@@ -330,3 +329,20 @@ translation with reduced motion. Emulating reduced transparency produced an
 opaque surface with no backdrop filter. Blur is limited to floating controls;
 study images and occlusion masks keep their existing opaque rendering. This
 change adds CSS only, with no animation loop, assets or runtime dependencies.
+
+## Stronger depth and a continuous gesture-area surface
+
+Build and 10 existing UI/mobile scenarios passed, including rerunning the two
+safe-area cases after correcting a fractional-pixel seam at DPR 2.625. Button
+contact/diffuse shadows and larger panel shadows were visually reviewed on
+seeded desktop/mobile pages in both appearances.
+
+The navigation pixel check now places a contrasting uniform backdrop behind the
+bar and compares an unobstructed vertical pixel strip through the bottom 34px
+with the material above that inset. A
+separately filled inset or an uncovered final pixel fails this check. The cold
+bootstrap and review scenes still check the page background because no navigation
+bar is present there. Icon clearance, theme persistence and standalone metadata
+remain covered by the existing scenarios. This is web-viewport validation, not
+a physical Android system-bar test; [support evidence and limits](docs/android-system-bars.md)
+are documented separately. A native wrapper has not been built or deployed.
