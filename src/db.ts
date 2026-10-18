@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { createEmptyCard } from 'ts-fsrs'
-import { descendants, MAX_MASK_LABEL_LENGTH, replay, SCHEDULER_VERSION, validRect, validateParent, type Asset, type Deck, type Flashcard, type Grade, type ImageRecord, type Preferences, type Rect, type Region, type ReviewEvent } from './domain'
+import { descendants, MAX_MASK_LABEL_LENGTH, replay, reviewQueue, SCHEDULER_VERSION, validRect, validateParent, type Asset, type Deck, type Flashcard, type Grade, type ImageRecord, type Preferences, type Rect, type Region, type ReviewEvent } from './domain'
 import { enqueue, enqueueImage, type OutboxOperation, type SyncMeta } from './sync/model'
 import { setStorageBlocked } from './storageLifecycle'
 
@@ -108,6 +108,20 @@ export async function rateCard(cardId: string, rating: Grade, at = Date.now(), e
     const events = await database.reviews.where('cardId').equals(cardId).toArray()
     await database.cards.update(cardId, { schedule: replay(card.createdAt, events) })
     await enqueue(database, 'review.add', event.id, event as unknown as Record<string, unknown>)
+  })
+}
+
+// Refresh only from IndexedDB. Keep pending order and append newly due cards,
+// including earlier attempts in this round, without duplicating pending IDs.
+export async function refreshReviewQueue(pending: string[], root: string | null, skipped: ReadonlySet<string>, now = new Date(), database = db) {
+  return database.transaction('r', [database.cards, database.images, database.decks, database.reviews, database.preferences], async () => {
+    const [cards, images, decks, events, preferences] = await Promise.all([
+      database.cards.toArray(), database.images.toArray(), database.decks.toArray(),
+      database.reviews.toArray(), database.preferences.get('app'),
+    ])
+    const eligible = reviewQueue(cards, images, decks, events, preferences ?? defaultPreferences, root, now).queue.map(card => card.id)
+    const available = new Set(eligible)
+    return [...new Set([...pending.filter(id => available.has(id)), ...eligible])].filter(id => !skipped.has(id))
   })
 }
 

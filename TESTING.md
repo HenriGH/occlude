@@ -401,3 +401,32 @@ or reload. Mobile/desktop light and dark captures were visually inspected.
 Production build, all 72 existing tests and 18 selected browser scenarios passed.
 These browser profiles do not constitute a new physical-device gesture test. The
 user has separately reported that the Android APK from the previous change works.
+
+## Live review rounds and focused layout (2026-10-18)
+
+The active queue refreshes from a consistent IndexedDB snapshot after each rating
+or skip. Pending order is retained; newly due repeats are appended once, scoped to
+the folder captured at session start. Daily new-card limits still apply. Deleted,
+moved, rescheduled and skipped cards do not keep reappearing. A refresh failure
+advances past the persisted rating, so retrying cannot accidentally rate it twice.
+No cloud fetch is involved and future-due cards do not delay completion.
+
+Four new database tests cover due-time boundaries, tail ordering/deduplication,
+subtree/global scope, movement/deletion, daily introductions and skips.
+`e2e/review-session.spec.ts` advances the browser clock to a real persisted FSRS due
+time while offline and verifies that the repeated card joins the same round before
+completion, with three persisted reviews for two cards. It also checks image
+centering through reveal/rotation, accessible progress, a text-free header, fixed
+bottom actions, safe insets and no page overflow. The mobile navigation fixture
+reapplies safe-area emulation after attaching a second CDP session; otherwise
+Chromium resets its emulated inset to zero. Question coverage checks that the
+caption remains readable above the ratings.
+
+Production build and all 76 unit/component/SQL/integration tests passed (Vitest
+with `--maxWorkers=2` avoids CPU contention during PGlite startup). All 20 selected
+browser scenarios passed, covering review, focal pinch zoom, local workflows,
+mobile navigation/system bars and the Android host bridge. The seven review/image/
+question scenarios were rerun after the final caption and landscape adjustments.
+Mobile/desktop dark captures and landscape question/answer layouts were inspected.
+These are Chromium checks, not a new physical-device test. The existing Android
+host loads the updated website; these changes do not require another APK.

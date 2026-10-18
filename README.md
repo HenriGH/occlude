@@ -31,6 +31,12 @@ Tab switches protect unsaved drafts, and the bar stays out of the way during
 reviews. Safe-area padding keeps content and notifications above it. No edge
 swipe handler is installed. Wide desktop windows retain the existing navigation.
 
+During review, the image is vertically centered, answer/rating buttons sit at the
+bottom above the gesture inset, and the header contains only exit and progress.
+After every rating, the round refreshes from local storage: newly due cards join
+the end without duplicating pending cards. Folder scope and daily new-card limits
+still apply. Reviews never wait for a cloud request.
+
 The mobile layout uses dynamic viewport height, safe-area insets and a standalone
 web manifest with PNG icons rendered from the existing logo. Browser theme colors
 follow the selected appearance, which is also applied before the app starts to

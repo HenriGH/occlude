@@ -30,6 +30,10 @@ test('a mask question survives saving and reload, stays visible after reveal, an
   await page.getByRole('button', { name: 'Antwort zeigen' }).click()
   await expect(page.getByTestId('target-mask')).toHaveCount(0)
   await expect(page.locator('.review-question')).toHaveText('Welche Struktur ist markiert?')
+  expect(await page.locator('.review-question').evaluate(el => {
+    const buttons = document.querySelector('.rating-buttons')!.getBoundingClientRect()
+    return el.clientHeight >= parseFloat(getComputedStyle(el).lineHeight) - 1 && el.getBoundingClientRect().bottom <= buttons.top
+  })).toBe(true)
   await expect(page.getByText('Welche Struktur ist markiert?', { exact: true })).toHaveCount(1)
   await page.getByRole('button', { name: 'Lernen beenden' }).click()
   await page.getByRole('button', { name: 'Bild mit 1 Karten bearbeiten' }).click()

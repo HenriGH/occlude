@@ -30,7 +30,7 @@ export default function App() {
   const [view, setView] = useState<View>(returningFromAuth ? 'settings' : 'dashboard')
   const [draft, setDraft] = useState<DraftImage | null>(null)
   const [draftVersion, setDraftVersion] = useState(0)
-  const [session, setSession] = useState<{ ids: string[]; name: string } | null>(null)
+  const [session, setSession] = useState<{ ids: string[]; root: string | null } | null>(null)
   const [deckDialog, setDeckDialog] = useState<{ deck?: Deck; parentId: string | null } | null>(null)
   const [toast, setToast] = useState<{ message: string; error: boolean } | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -139,7 +139,7 @@ export default function App() {
   }
   function beginReview() {
     const current = reviewQueue(data?.cards ?? [], data?.images ?? [], decks, data?.reviews ?? [], prefs, root, new Date())
-    setSession({ ids: current.queue.map(c => c.id), name: selected?.name ?? 'Alle Ordner' })
+    setSession({ ids: current.queue.map(c => c.id), root })
   }
   if (bootError) return <StartupScreen error />
   if (!data || !cloud.loaded) return <StartupScreen />
@@ -159,7 +159,7 @@ export default function App() {
     <main className="main-panel" onDragOver={e => { if (e.dataTransfer.types.includes('Files') && !session) { e.preventDefault(); setDragging(true) } }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }} onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f && !deckDialog) void acceptFile(f) }}>
       <input ref={fileInput} type="file" className="sr-only" aria-label="Bild hochladen" accept="image/png,image/jpeg,image/webp" onChange={e => { const file = e.target.files?.[0]; if (file) void acceptFile(file); e.target.value = '' }} />
       <div className={`main-content ${session ? 'session-content' : ''}`}>
-      {session ? <Review ids={session.ids} deckName={session.name} onClose={() => { setSession(null); setClock(Date.now()) }} onError={onError} /> : draft ? <Editor key={draftVersion} draft={draft} decks={sortedDecks} onClose={() => setDraft(null)} onError={onError} onSaved={id => { selectDeck(id); setDraft(null); setView('library'); setToast({ message: 'Gespeichert', error: false }) }} /> : view === 'settings' ? <Settings prefs={prefs} run={run} cloud={cloud} onError={onError} /> : view === 'create' ? <><div className="page-heading"><h1>Neue Karte</h1><button className="icon-button mobile-settings" aria-label="Einstellungen" onClick={() => openView('settings')}><Settings2 size={22} /></button></div><UploadArea onUpload={() => fileInput.current?.click()} large /></> : <>
+      {session ? <Review ids={session.ids} root={session.root} onClose={() => { setSession(null); setClock(Date.now()) }} onError={onError} /> : draft ? <Editor key={draftVersion} draft={draft} decks={sortedDecks} onClose={() => setDraft(null)} onError={onError} onSaved={id => { selectDeck(id); setDraft(null); setView('library'); setToast({ message: 'Gespeichert', error: false }) }} /> : view === 'settings' ? <Settings prefs={prefs} run={run} cloud={cloud} onError={onError} /> : view === 'create' ? <><div className="page-heading"><h1>Neue Karte</h1><button className="icon-button mobile-settings" aria-label="Einstellungen" onClick={() => openView('settings')}><Settings2 size={22} /></button></div><UploadArea onUpload={() => fileInput.current?.click()} large /></> : <>
         <div className="page-heading"><h1>{view === 'library' ? 'Bibliothek' : 'Übersicht'}</h1><div className="page-actions"><button className="button primary create-top" aria-label="Karte erstellen" onClick={() => navigate('create')}><Plus size={18} /><span>Karte erstellen</span></button><button className="icon-button mobile-settings" aria-label="Einstellungen" onClick={() => openView('settings')}><Settings2 size={22} /></button></div></div>
         {view === 'library' && <FolderBreadcrumbs decks={sortedDecks} selectedId={root} onSelect={selectDeck} />}
         {view === 'dashboard' && <>

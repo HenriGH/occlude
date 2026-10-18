@@ -244,24 +244,24 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
 .inspector-empty > svg { margin: 0 auto 10px; }
 .shortcut-hint { display: block; margin-top: 20px; color: var(--muted); font-size: 11px; text-align: center; }
 .review-shell .main-panel { margin-left: 0; padding-left: var(--safe-left); }
-.session-content { max-width: 1100px; padding-top: calc(24px + var(--safe-top)); }
-.review-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
-.review-header .back-link { margin: 0; }
-.review-deck { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--muted); font-size: 13px; }
-.mono { flex-shrink: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.review-progress { height: 3px; overflow: hidden; border-radius: 3px; background: var(--border); }
+.review-shell .main-content.session-content { max-width: 1100px; padding: var(--safe-top) 0 var(--safe-bottom); }
+.review-page { --review-dock-height: 100px; height: calc(100dvh - var(--safe-top) - var(--safe-bottom)); min-height: 320px; display: grid; grid-template-rows: var(--review-dock-height) minmax(0, 1fr) var(--review-dock-height); }
+.review-page.has-question { --review-dock-height: 140px; }
+.review-header { display: flex; align-items: center; align-self: start; gap: 16px; padding: 16px 20px; }
+.review-progress { flex: 1; height: 3px; overflow: hidden; border-radius: 3px; background: var(--border); }
 .review-progress > div { height: 100%; background: var(--accent-ring); transition: width .2s; }
-.review-image { --review-max-height: max(240px, calc(100svh - 280px - var(--safe-top) - var(--safe-bottom))); margin: 24px auto 0; }
+.review-stage { min-height: 0; display: flex; align-items: center; justify-content: center; }
+.review-image { --review-max-height: max(1px, calc(100dvh - 2 * var(--review-dock-height) - var(--safe-top) - var(--safe-bottom))); width: 100%; }
 .review-image .image-workspace { margin-inline: auto; }
 .review-image .image-viewport { height: auto; min-height: 0; max-height: none; padding: 0; background: transparent; cursor: default; }
 .review-image .image-viewport.is-zoomed { cursor: grab; }
 .review-image .image-viewport.is-zoomed:active { cursor: grabbing; }
 .review-image .image-surface { max-height: none; box-shadow: none; }
-.review-question { margin: 14px auto 0; max-width: 700px; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; overflow-wrap: anywhere; white-space: pre-wrap; }
-.review-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 22px 0; }
+.review-question { margin: 0 auto; flex-shrink: 1; min-height: 0; overflow-y: auto; max-width: 700px; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; overflow-wrap: anywhere; white-space: pre-wrap; }
+.review-actions { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 8px; padding: 8px 20px 12px; min-height: 0; }
 .reveal-button { min-width: 300px; }
 .reveal-button kbd { margin-left: 16px; }
-.rating-buttons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; width: 100%; max-width: 700px; }
+.rating-buttons { flex-shrink: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; width: 100%; max-width: 700px; }
 .rating { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); text-align: left; }
 .rating > span { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 13px; font-weight: 500; }
 .rating small { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; }
@@ -269,7 +269,7 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
 .rating-2 { color: #96752a; }
 .rating-3 { background: var(--soft); color: var(--accent-text); border-color: var(--accent-ring); }
 .rating-4 { color: var(--accent-text); }
-.session-complete { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 80px 20px; text-align: center; }
+.session-complete { grid-row: 2 / 4; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 80px 20px; text-align: center; }
 .success-emblem { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: var(--soft); color: var(--accent-text); }
 .empty-panel { padding: 30px 16px; text-align: center; }
 .empty-panel p { margin: 18px 0; color: var(--muted); line-height: 1.5; }
@@ -418,14 +418,8 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
   .editor-inspector { padding: 18px; }
   .mask > span { font-size: 10px; }
   .shortcut-hint { display: none; }
-  .review-shell .session-content { --review-gutter: 14px; padding: calc(16px + var(--safe-top)) var(--review-gutter) calc(20px + var(--safe-bottom)); }
-  .review-header { gap: 8px; }
-  .review-header .back-link { font-size: 12px; }
-  .review-deck { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-  .review-deck svg { display: none; }
-  .mono { font-size: 11px; }
-  .review-image { margin-top: 20px; margin-inline: calc(-1 * var(--review-gutter)); }
-  .review-actions { padding-top: 20px; }
+  .review-header { gap: 12px; padding: 10px 14px; }
+  .review-actions { padding-inline: 14px; }
   .reveal-button { width: 100%; min-width: 0; min-height: 48px; }
   .reveal-button kbd, .rating kbd { display: none; }
   .rating-buttons { gap: 7px; }
@@ -447,7 +441,6 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
   .page-heading { flex-wrap: wrap; }
   .summary-copy h2 { font-size: 17px; }
   .study-summary { padding: 18px; }
-  .review-deck { max-width: 80px; }
   .image-tile-info { padding-left: 8px; padding-right: 5px; }
   .image-tile-info span { font-size: 9px; }
 }
@@ -461,4 +454,11 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
   .button.primary { transform: none !important; }
+}
+
+@media (max-height: 500px) {
+  .review-page.has-question { --review-dock-height: 112px; }
+  .review-actions .rating { min-height: 52px; padding: 8px 9px; }
+  .review-actions .rating small { margin-top: 4px; }
+  .review-question { font-size: 12px; line-height: 1.3; }
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Rating } from 'ts-fsrs'
-import { deleteDeck, initialize, moveImage, OccludeDB, rateCard, removeImage, saveDeck, saveImage } from './db'
+import { deleteDeck, initialize, moveImage, OccludeDB, rateCard, refreshReviewQueue, removeImage, saveDeck, saveImage } from './db'
 import type { Asset, Rect } from './domain'
 
 let database: OccludeDB
@@ -143,5 +143,55 @@ describe('hierarchy, movement and garbage collection', () => {
     expect(await database.assets.count()).toBe(1)
     await removeImage(otherImage, database)
     expect(await database.assets.count()).toBe(0)
+  })
+})
+
+
+describe('live local review queue', () => {
+  it('appends a newly due repeat behind pending cards without duplicating them', async () => {
+    await saveImage(asset, deck, ['a', 'b', 'c'].map(rect), undefined, database)
+    const cards = await database.cards.toArray()
+    const [first, second, third] = cards
+    const at = Date.now()
+    await rateCard(first.id, Rating.Again, at, 'first-attempt', database)
+    const due = +(await database.cards.get(first.id))!.schedule.due
+    const pending = [third.id, second.id]
+    expect(await refreshReviewQueue(pending, deck, new Set(), new Date(due - 1), database)).toEqual(pending)
+    expect(await refreshReviewQueue(pending, deck, new Set(), new Date(due), database)).toEqual([...pending, first.id])
+    await rateCard(third.id, Rating.Good, due, 'third-attempt', database)
+    expect(await refreshReviewQueue([second.id, first.id], deck, new Set(), new Date(due), database)).toEqual([second.id, first.id])
+  })
+  it('keeps the selected subtree and excludes removed or moved pending cards', async () => {
+    const child = await saveDeck('Kind', deck, undefined, database)
+    const other = await saveDeck('Anderes', null, undefined, database)
+    const image = await saveImage(asset, deck, [rect('a')], undefined, database)
+    await saveImage({ ...asset, hash: 'child' }, child, [rect('b')], undefined, database)
+    await saveImage({ ...asset, hash: 'other' }, other, [rect('c')], undefined, database)
+    const cards = await database.cards.toArray()
+    const first = cards.find(c => c.regionId === 'a')!, nested = cards.find(c => c.regionId === 'b')!
+    expect(await refreshReviewQueue([nested.id, first.id], deck, new Set(), new Date(), database)).toEqual([nested.id, first.id])
+    await moveImage(image, other, database)
+    expect(await refreshReviewQueue([nested.id, first.id, 'deleted'], deck, new Set(), new Date(), database)).toEqual([nested.id])
+    expect(await refreshReviewQueue([], null, new Set(), new Date(), database)).toHaveLength(3)
+  })
+  it('continues to enforce the daily new-card limit as cards are introduced', async () => {
+    await saveImage(asset, deck, ['a', 'b', 'c'].map(rect), undefined, database)
+    await database.preferences.update('app', { newLimit: 2 })
+    const initial = await refreshReviewQueue([], deck, new Set(), new Date(), database)
+    expect(initial).toHaveLength(2)
+    await rateCard(initial[0], Rating.Good, Date.now(), 'introduction', database)
+    expect(await refreshReviewQueue(initial.slice(1), deck, new Set(), new Date(), database)).toEqual(initial.slice(1))
+    await database.preferences.update('app', { newLimit: 3 })
+    const expanded = await refreshReviewQueue(initial.slice(1), deck, new Set(), new Date(), database)
+    expect(expanded).toHaveLength(2)
+    expect(expanded[0]).toBe(initial[1])
+    expect(expanded).not.toContain(initial[0])
+  })
+  it('does not reinsert skipped unavailable cards and completes when nothing is due', async () => {
+    await saveImage(asset, deck, [rect('a'), rect('b')], undefined, database)
+    const [first, second] = await database.cards.toArray()
+    expect(await refreshReviewQueue([], deck, new Set([first.id]), new Date(), database)).toEqual([second.id])
+    await rateCard(second.id, Rating.Good, Date.now(), 'good', database)
+    expect(await refreshReviewQueue([], deck, new Set([first.id]), new Date(), database)).toEqual([])
   })
 })

@@ -90,6 +90,7 @@ for (const device of ['Pixel 7', 'iPhone 13']) {
 
     test('tab navigation protects drafts, touch editing still works, and learning uses the full available screen', async ({ page, context }) => {
       const session = await context.newCDPSession(page)
+      await session.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 24, bottom: 34, left: 0, right: 0 } })
       await createLocalLibrary(page)
       const tabs = page.getByRole('navigation', { name: 'Mobile Navigation' })
       await page.getByRole('button', { name: 'Bild mit 2 Karten bearbeiten' }).tap()
