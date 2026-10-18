@@ -27,13 +27,29 @@ test(`bottom safe area follows the app appearance across scroll and a cold dark 
     // Native browser emulation of env(safe-area-inset-*), rather than replacing
     // the application's CSS custom properties. This is still not an Android OS bar.
     await session.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 24, bottom: 34, left: 0, right: 0 } })
-    await page.goto('/')
+    let start!: () => void
+    const startupGate = new Promise<void>(resolve => { start = resolve })
+    const holdStartup = async (route: import('@playwright/test').Route) => {
+      if (route.request().resourceType() === 'script') await startupGate
+      return route.fallback()
+    }
+    await page.route('**/*', holdStartup)
+    try {
+      await page.goto('/', { waitUntil: 'commit' })
+      // A fresh install starts dark even on a light OS, before React or the DB.
+      await expect(page.locator('html')).toHaveClass('dark')
+      await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(0, 0, 0)')
+      await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', 'dark')
+      await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest-dark.webmanifest')
+      await expectBottomBackground(page, [0, 0, 0])
+    } finally { start() }
     const manifest = await (await page.request.get('/manifest.webmanifest')).json()
     expect(manifest.display).toBe('standalone')
     expect(manifest.id).toBe('/')
     expect(manifest.theme_color).toBe('#f5f5f7')
     expect(manifest.background_color).toBe('#f5f5f7')
     await page.getByRole('button', { name: 'Einstellungen', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Dunkel', exact: true })).toHaveAttribute('aria-pressed', 'true')
     for (const [appearance, scheme, background, rgb] of [
       ['Dunkel', 'dark', '#000000', [0, 0, 0]],
       ['Hell', 'light', '#f5f5f7', [245, 245, 247]],
@@ -57,6 +73,13 @@ test(`bottom safe area follows the app appearance across scroll and a cold dark 
       expect(await page.locator('.main-content').evaluate(el => parseFloat(getComputedStyle(el).paddingBottom))).toBeGreaterThanOrEqual(62)
       await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight))
       await expectBottomBackground(page, [...rgb])
+      if (appearance === 'Hell') {
+        await page.reload()
+        await page.getByRole('button', { name: 'Einstellungen', exact: true }).click()
+        await expect(page.getByRole('button', { name: 'Hell', exact: true })).toHaveAttribute('aria-pressed', 'true')
+        await expect(page.locator('html')).not.toHaveClass('dark')
+        await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest')
+      }
     }
     await page.screenshot({ path: `test-results/bottom-safe-area-${device.replaceAll(' ', '-')}.png`, animations: 'disabled' })
     let release!: () => void

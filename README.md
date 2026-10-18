@@ -13,7 +13,11 @@ installation metadata is included; offline app-shell caching and ZIP backups rem
 planned phases.
 
 The interface uses system typography, a compact study summary, and light/dark
-appearances. An existing library with no cards due remains an existing library;
+appearances. New installations default to dark, including the first paint on a
+light OS. Saved light/dark/system choices remain unchanged. Desktop pages use
+their main title without an extra header or sync indicator; sync details are
+available in settings while synchronization runs in the background.
+An existing library with no cards due remains an existing library;
 an unconnected account or first cloud pull shows a recovery state without a
 first-card prompt. Cached content stays available during synchronization.
 

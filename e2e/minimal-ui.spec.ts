@@ -3,6 +3,9 @@ import { cloudFixture, createLocalLibrary, localState, seedWorkspace } from './h
 
 test('an existing library with nothing due or an empty selected folder never becomes a first-card prompt', async ({ page }) => {
   await createLocalLibrary(page)
+  await expect(page.locator('.topbar')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^Cloud-Status:/ })).toHaveCount(0)
+  expect((await page.getByRole('heading', { name: 'Bibliothek', exact: true }).boundingBox())!.y).toBeLessThan(70)
   await page.getByRole('button', { name: 'Einstellungen', exact: true }).click()
   await page.getByRole('spinbutton', { name: 'Neue Karten pro Tag' }).fill('0')
   await page.getByRole('button', { name: 'Übersicht', exact: true }).click()
@@ -58,6 +61,9 @@ test(`mobile installation metadata, safe areas, landscape and dark launch (${dev
     await page.route('**/*', route => ['localhost', '127.0.0.1'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Übersicht', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Einstellungen', exact: true }).click()
+    await page.getByRole('button', { name: 'Hell', exact: true }).click()
+    await page.getByRole('button', { name: 'Übersicht', exact: true }).click()
     await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/)
     const manifest = await (await page.request.get('/manifest.webmanifest')).json()
     expect(manifest.display).toBe('standalone')

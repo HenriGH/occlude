@@ -27,7 +27,7 @@ export const db = new OccludeDB()
 db.on('blocked', () => setStorageBlocked(true))
 db.on('ready', () => { setStorageBlocked(false) }, true)
 const uid = (): string => crypto.randomUUID()
-export const defaultPreferences: Preferences = { id: 'app', selectedDeckId: null, newLimit: 20, dayBoundary: 4, theme: 'system' }
+export const defaultPreferences: Preferences = { id: 'app', selectedDeckId: null, newLimit: 20, dayBoundary: 4, theme: 'dark' }
 
 export async function initialize(database = db) {
   // Existing workspaces need no startup write lock shared with other instances.

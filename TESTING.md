@@ -295,3 +295,22 @@ Accepting discard leaves the saved cards untouched; a subsequent edit/save adds
 a card normally. Reviews hide the bar, keep answer buttons above the safe area,
 and restore the tabs when exited. All external HTTP requests are mocked/aborted.
 These are Chromium mobile profiles, not physical-device or Safari checks.
+
+## Dark default and desktop header removal
+
+Production build, all 72 unit/component/SQL/integration checks and all 27 browser
+scenarios passed. The two cold-start scenarios passed on rerun after correcting
+a request-interception race in their new startup gate.
+
+The safe-area scenarios now hold app scripts on a fresh launch with a light OS
+and verify a black first paint, dark color-scheme metadata and the dark manifest
+before React/IndexedDB load. Settings must then show Dunkel selected. Choosing
+Hell and reloading preserves the saved choice and the light manifest; the
+existing cold dark reload and bottom-pixel checks remain in place. Light-mode
+visual scenarios choose Hell explicitly instead of relying on the old default.
+
+The desktop library check verifies that the extra header and its sync-status
+button are absent and that the main title occupies the recovered space. Existing
+background-sync scenarios still exercise editing, saving and review while Auth,
+pulls and pushes stall, then verify queued work drains successfully. Sync details
+remain available in settings.
