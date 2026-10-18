@@ -49,6 +49,7 @@ test('Android host passes physical insets, follows the app theme, and preserves 
   await expect(page.getByRole('dialog')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Bild mit 2 Karten bearbeiten' }).click()
+  await expect(page.getByRole('button', { name: '2 Karten speichern' })).toBeVisible()
   await Promise.all([page.waitForEvent('dialog').then(dialog => dialog.dismiss()), back(page)])
   await expect(page.getByRole('button', { name: '2 Karten speichern' })).toBeVisible()
   await Promise.all([page.waitForEvent('dialog').then(dialog => dialog.accept()), back(page)])

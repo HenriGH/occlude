@@ -373,3 +373,31 @@ The CI workflow provisions an accelerated emulator, but its result is not claime
 from the presence of the workflow file. A physical Pixel 10 check is still needed.
 The separately installed APK does not change the existing Chrome PWA window or
 inherit its local storage/auth session; account sync supplies existing cards.
+
+## Minimal study image and focal zoom
+
+Review now uses an unframed, aspect-ratio-sized image without its zoom toolbar or
+duplicate question heading. On mobile the image extends across the content
+gutters to the screen's safe edges; very tall images fit the available height.
+The current mask's question wraps and fits its box. After reveal, the mask is
+removed and the question appears once as a small caption. Generic instructions
+above the image are removed.
+
+Pinch keeps the image coordinate under the moving midpoint of both fingers.
+Zoom and translation update together using the latest gesture state. Review
+panning is bounded by the image edges and disabled at normal size. Lifting one
+finger continues the pan with the remaining finger. Ctrl+wheel/trackpad pinch
+anchors desktop zoom at the pointer; ordinary wheel scrolling remains available.
+Reveal preserves the view and a new card starts at normal size. Resize clamps the
+view to its new bounds. Editor tools, drawing, immediate resizing and undo remain
+covered by the existing local and touch workflows.
+
+`e2e/review-image.spec.ts` exercises real Chromium/CDP multi-touch under Pixel 7
+and iPhone 13 emulation, checks off-center image coordinates before/after pinch,
+one-finger handoff, image-edge coverage, zoom reset, reveal and desktop wheel
+anchoring. Question tests check a single visible copy, fitted text, persistence
+and removing the question. Fixtures wait for editor/save completion before Back
+or reload. Mobile/desktop light and dark captures were visually inspected.
+Production build, all 72 existing tests and 18 selected browser scenarios passed.
+These browser profiles do not constitute a new physical-device gesture test. The
+user has separately reported that the Android APK from the previous change works.

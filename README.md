@@ -112,6 +112,15 @@ and gaps. The app does not have a service worker in Phase 1.
    review. Save once, or Ctrl/Cmd+Enter.
 4. Select **Lernen** or **Jetzt lernen**, reveal, and rate Nochmal/Schwer/Gut/Einfach.
 
+The study image has no zoom toolbar or gray canvas. Pinch to zoom around the
+point between your fingers; drag while zoomed to inspect the image within its
+edges. Desktop trackpad pinch or Ctrl+mouse wheel zooms around the cursor. Normal
+wheel input scrolls the page. Mobile slides reach the screen edges, while tall
+images fit the available height. A question appears once on its mask and, after
+revealing the answer, once as a small caption. Long mask questions wrap and fit
+their box rather than being truncated. Website updates also apply to the Android
+host after fully closing and reopening it; a new APK is not needed for this view.
+
 Editor shortcuts: **R** draw, **V** select/move/resize, **H** pan, Delete remove the
 selected mask, Ctrl/Cmd+Z undo. Use zoom controls, the wheel, or two fingers to zoom.
 After drawing, the selected mask's corner handle is immediately available for

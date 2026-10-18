@@ -217,6 +217,7 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
 .mask.editing { background: var(--accent); border: 1.5px solid var(--mask-border); color: var(--accent-ink); }
 .mask > span { font-size: clamp(8px, 1.2vw, 14px); font-weight: 550; pointer-events: none; }
 .mask > .mask-label { min-width: 0; max-width: 100%; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; line-height: 1.2; }
+.mask > .mask-question { width: 100%; max-height: 100%; white-space: normal; overflow-wrap: anywhere; text-overflow: clip; line-height: 1.15; }
 .mask.selected { outline: 2px solid var(--mask-border); outline-offset: 2px; }
 .mask.target { background: var(--accent); border: 2px solid var(--mask-border); color: var(--accent-ink); }
 .mask.other { background: #7f8c81; border: 1px solid #637067; }
@@ -250,12 +251,13 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
 .mono { flex-shrink: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .review-progress { height: 3px; overflow: hidden; border-radius: 3px; background: var(--border); }
 .review-progress > div { height: 100%; background: var(--accent-ring); transition: width .2s; }
-.review-instruction { margin: 28px 0 20px; text-align: center; }
-.review-instruction h1 { font-size: 24px; font-weight: 600; }
-.review-instruction h1, .review-instruction p { overflow-wrap: anywhere; white-space: pre-wrap; }
-.review-instruction p { margin-top: 8px; color: var(--muted); font-size: 14px; }
-.review-image { max-width: 850px; margin: auto; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; }
-.review-image .image-viewport { height: 48dvh; min-height: 230px; }
+.review-image { --review-max-height: max(240px, calc(100svh - 280px - var(--safe-top) - var(--safe-bottom))); margin: 24px auto 0; }
+.review-image .image-workspace { margin-inline: auto; }
+.review-image .image-viewport { height: auto; min-height: 0; max-height: none; padding: 0; background: transparent; cursor: default; }
+.review-image .image-viewport.is-zoomed { cursor: grab; }
+.review-image .image-viewport.is-zoomed:active { cursor: grabbing; }
+.review-image .image-surface { max-height: none; box-shadow: none; }
+.review-question { margin: 14px auto 0; max-width: 700px; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; overflow-wrap: anywhere; white-space: pre-wrap; }
 .review-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 22px 0; }
 .reveal-button { min-width: 300px; }
 .reveal-button kbd { margin-left: 16px; }
@@ -416,15 +418,13 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
   .editor-inspector { padding: 18px; }
   .mask > span { font-size: 10px; }
   .shortcut-hint { display: none; }
-  .session-content { padding: calc(16px + var(--safe-top)) 14px calc(20px + var(--safe-bottom)); }
+  .review-shell .session-content { --review-gutter: 14px; padding: calc(16px + var(--safe-top)) var(--review-gutter) calc(20px + var(--safe-bottom)); }
   .review-header { gap: 8px; }
   .review-header .back-link { font-size: 12px; }
   .review-deck { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
   .review-deck svg { display: none; }
   .mono { font-size: 11px; }
-  .review-instruction { margin: 22px 0 18px; }
-  .review-instruction h1 { font-size: 23px; }
-  .review-image .image-viewport { height: 42dvh; min-height: 230px; padding: 10px; }
+  .review-image { margin-top: 20px; margin-inline: calc(-1 * var(--review-gutter)); }
   .review-actions { padding-top: 20px; }
   .reveal-button { width: 100%; min-width: 0; min-height: 48px; }
   .reveal-button kbd, .rating kbd { display: none; }

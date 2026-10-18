@@ -82,7 +82,10 @@ test('A: native screenshot paste creates three independent cards, review persist
   expect(before.x).toBeCloseTo(.07, 2); expect(before.width).toBeCloseTo(.32, 2)
   const imageBounds = (await page.getByAltText('Originalbild der Lernkarte').boundingBox())!
   expect(imageBounds.width / imageBounds.height).toBeCloseTo(1000 / 650, 2)
-  await page.getByRole('button', { name: 'Vergrößern', exact: true }).click()
+  await expect(page.locator('.zoom-controls')).toHaveCount(0)
+  await page.mouse.move(imageBounds.x + imageBounds.width * .35, imageBounds.y + imageBounds.height * .4)
+  await page.keyboard.down('Control'); await page.mouse.wheel(0, -180); await page.keyboard.up('Control')
+  await expect.poll(() => page.getByTestId('image-surface').evaluate(el => new DOMMatrix(getComputedStyle(el).transform).a)).toBeGreaterThan(1.2)
   const view = (await page.getByTestId('image-viewport').boundingBox())!
   await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2); await page.mouse.down(); await page.mouse.move(view.x + view.width / 2 + 30, view.y + view.height / 2 + 20); await page.mouse.up()
   const after = await geometry()

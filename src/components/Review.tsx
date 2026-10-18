@@ -55,9 +55,9 @@ export function Review({ ids, deckName, onClose, onError }: { ids: string[]; dec
     <div className="review-header"><button className="back-link" onClick={onClose}><ArrowLeft size={17} /> Lernen beenden</button><span className="review-deck"><Layers size={15} />{deckName}</span><span className="mono">{Math.min(index + 1, ids.length)} / {ids.length}</span></div>
     <div className="review-progress"><div style={{ width: `${ids.length ? index / ids.length * 100 : 100}%` }} /></div>
     {complete ? <div className="session-complete"><span className="success-emblem"><Check size={40} /></span><h1>Fertig für jetzt</h1><p className="muted">{index} {index === 1 ? 'Karte wiederholt' : 'Karten wiederholt'}. Lokal gespeichert.</p><button className="button primary" onClick={onClose}>Zur Übersicht <ArrowRight size={17} /></button></div> : <>
-      <div className="review-instruction"><h1>{revealed ? 'Wie gut wusstest du es?' : question || 'Was ist verdeckt?'}</h1>{revealed && question && <p>{question}</p>}</div>
       {data === undefined ? <p role="status">Karte wird geladen …</p> : !data?.asset ? <div className="empty-panel"><h2>{data ? 'Bild auf diesem Gerät nicht verfügbar' : 'Diese Karte wurde gelöscht'}</h2><p>{assetError || (data ? 'Das Originalbild wird geladen …' : 'Die Karte kann gerade nicht bewertet werden.')}</p>{data && assetError && <button className="button" onClick={() => setAssetError('')}>Bild erneut laden</button>}<button className="button" onClick={() => { setIndex(i => i + 1); setRevealed(false) }}>Überspringen</button></div> : <>
         <div className={`review-image ${revealed ? 'revealed' : ''}`}><ImageSurface key={data.card.id} asset={data.asset} regions={data.regions} targetId={data.card.regionId} revealed={revealed} /></div>
+        {revealed && question && <p className="review-question">{question}</p>}
         <div className="review-actions">{revealed ? <RatingButtons card={data.card} busy={busy} onRate={rate} /> : <><button className="button primary reveal-button" onClick={() => setRevealed(true)}><Eye size={19} /> Antwort zeigen <kbd>Leertaste</kbd></button></>}</div>
       </>}
     </>}
