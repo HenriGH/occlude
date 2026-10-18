@@ -57,7 +57,7 @@ shell. AndroidX provides
 Such a host can retain visible status/navigation bars, draw the web content behind
 them, pass safe insets to the layout, and update system-icon appearance with the
 app theme. It requires an Android build/distribution, rather than a website-only
-deployment. No native package is included or claimed tested by this change.
+deployment. The subsequent native implementation is described below.
 
 ## Pixel 10 follow-up
 
@@ -85,5 +85,12 @@ and distribution change, not another website deployment. It would need to:
 
 A separate WebView has its own storage, so it cannot silently inherit the Chrome
 installation's local cards or login. Account sync would provide the transfer path.
-No Android host is included in this website-only change, and no real-device fix
-for the installed Chrome window is claimed.
+The user subsequently chose the native-host option. A separate Android project
+now lives in [`android/`](../android/README.md). It owns an edge-to-edge WebView,
+keeps system bars visible, disables the native navigation contrast scrim, supplies
+safe/keyboard insets and follows page appearance through an origin-restricted
+AndroidX message channel. It loads the same hosted website and uses a separate
+local workspace restored through account sync. This is a separate APK, not a
+change to the existing Chrome installation. Build, installation and device-test
+instructions are in the Android README; native test execution must be reported
+separately from compilation and browser emulation.

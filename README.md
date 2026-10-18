@@ -47,6 +47,11 @@ navigation bar. `viewport-fit=cover` already opts in where supported; it cannot
 force a host browser to allow it. See [Android system bars](docs/android-system-bars.md)
 for the distinction and the native edge-to-edge alternative.
 
+An optional [Android app host](android/README.md) provides its own edge-to-edge
+window while keeping clock/battery visible. It loads the same website, supports
+image selection and Android Back, and restores account data via the existing sync.
+Its APK is installed separately from the Chrome PWA.
+
 The default logo uses the white outline and pale-green occlusion mark. Browser
 and installation icons use this version on a neutral dark background for contrast
 on any home screen. In-app branding still follows the selected light/dark

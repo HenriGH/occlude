@@ -8,3 +8,12 @@ test-results/
 .env.*
 !.env.example
 *.tsbuildinfo
+android/.gradle/
+android/**/build/
+android/local.properties
+*.keystore
+*.jks
+android/.idea/
+*.iml
+artifacts/
+__pycache__/

@@ -118,6 +118,20 @@ export default function App() {
     window.addEventListener('paste', paste)
     return () => window.removeEventListener('paste', paste)
   })
+  useEffect(() => {
+    const back = (event: Event) => {
+      const dialog = document.querySelector<HTMLDialogElement>('dialog[open]')
+      if (dialog) {
+        event.preventDefault()
+        if (dialog.dispatchEvent(new Event('cancel', { cancelable: true }))) dialog.close()
+      } else if (session) { event.preventDefault(); setSession(null) }
+      else if (draft) { event.preventDefault(); openView('dashboard') }
+      else if (view === 'library' && selected) { event.preventDefault(); selectDeck(selected.parentId) }
+      else if (view !== 'dashboard') { event.preventDefault(); navigate('dashboard') }
+    }
+    window.addEventListener('occlude-android-back', back)
+    return () => window.removeEventListener('occlude-android-back', back)
+  })
   async function editImage(image: ImageRecord) {
     const asset = await ensureImageAsset(image.id)
     setDraft({ asset, regions: await db.regions.where('imageId').equals(image.id).toArray(), deckId: image.deckId, imageId: image.id })

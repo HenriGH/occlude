@@ -346,3 +346,30 @@ bar is present there. Icon clearance, theme persistence and standalone metadata
 remain covered by the existing scenarios. This is web-viewport validation, not
 a physical Android system-bar test; [support evidence and limits](docs/android-system-bars.md)
 are documented separately. A native wrapper has not been built or deployed.
+# Android host and whole image-tile elevation (18 October 2026)
+
+The complete image tile now has a surrounding shadow and a continuous raised rim
+painted above both thumbnail and caption. The thumbnail has solid satin shading;
+the screenshot/image and masks remain unobscured. Seeded mobile and desktop views
+were inspected in both appearances, and keyboard activation of a thumbnail still
+opens the editor.
+
+The optional `android/` WebView host controls its own edge-to-edge window, visible
+system bars, safe/keyboard insets, theme icon appearance, file selection and Back.
+Its origin-restricted document-start script is tested directly in Playwright.
+The Back test waits for the current-folder breadcrumb before issuing Back;
+without this wait it raced the asynchronous IndexedDB folder selection.
+
+Verified locally: production web build; all 72 unit/component/SQL/integration
+tests; 13 selected browser scenarios (Android host, local workflow, mobile
+navigation and safe-area appearance); Android `assembleDebug`, `lintDebug` and
+`assembleDebugAndroidTest`; the generated preview APK's SHA-256 and APK signature.
+
+Native screenshot execution remains unverified. The initial connected-test
+attempt ran **zero tests**: the software-emulated Android 16 guest had not started
+its package service, so installation failed before the app or tests could run.
+This cloud machine has no `/dev/kvm`; its guest did not reach a usable boot state.
+The CI workflow provisions an accelerated emulator, but its result is not claimed
+from the presence of the workflow file. A physical Pixel 10 check is still needed.
+The separately installed APK does not change the existing Chrome PWA window or
+inherit its local storage/auth session; account sync supplies existing cards.
