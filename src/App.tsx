@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowDownToLine, ArrowRight, BookOpen, Check, ChevronRight, CircleHelp, Ellipsis, Folder, FolderPlus, ImagePlus, LayoutDashboard, Moon, MoreHorizontal, Plus, Settings2, ShieldCheck, Sun, Trash2, X } from 'lucide-react'
 import { db, defaultPreferences, deleteDeck, initialize, moveImage, removeImage, saveDeck, updatePreferences } from './db'
-import { descendants, reviewQueue, type Deck, type ImageRecord } from './domain'
+import { dailyStreak, descendants, reviewQueue, type DailyStreak, type Deck, type ImageRecord } from './domain'
 import { prepareImage } from './images'
 import { Editor, type DraftImage } from './components/Editor'
 import { Review } from './components/Review'
@@ -17,6 +17,7 @@ import { applyAppearance } from './appearance'
 import { StartupScreen } from './components/StartupScreen'
 import { DeckNavigation } from './components/DeckNavigation'
 import { FolderBreadcrumbs } from './components/FolderBreadcrumbs'
+import { StreakBadge, StreakCelebration } from './components/Streak'
 
 type View = 'dashboard' | 'library' | 'create' | 'settings'
 function deckPath(decks: Deck[], id: string): string {
@@ -38,6 +39,13 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine)
   const [clock, setClock] = useState(Date.now())
   const [bootError, setBootError] = useState('')
+  const [streakCelebration, setStreakCelebration] = useState<DailyStreak | null>(null)
+  const onStreak = useCallback((streak: DailyStreak) => { setClock(Date.now()); setStreakCelebration(streak) }, [])
+  useEffect(() => {
+    if (!streakCelebration) return
+    const timer = setTimeout(() => setStreakCelebration(null), 3600)
+    return () => clearTimeout(timer)
+  }, [streakCelebration])
   const fileInput = useRef<HTMLInputElement>(null)
   const processingRef = useRef(false)
   const onError = useCallback((e: unknown) => {
@@ -53,6 +61,7 @@ export default function App() {
     if (!preferences) return undefined
     return { decks: decks.sort((a, b) => b.updatedAt - a.updatedAt), images, cards, reviews, prefs: preferences }
   }))
+  const streak = useMemo(() => dailyStreak(data?.reviews ?? [], new Date()), [data?.reviews, clock])
   const prefs = data?.prefs ?? defaultPreferences
   const decks = data?.decks ?? []
   const selected = decks.find(d => d.id === prefs.selectedDeckId)
@@ -89,8 +98,10 @@ export default function App() {
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 15000)
     const connectivity = () => { setOnline(navigator.onLine); setClock(Date.now()) }
+    const visibility = () => { if (document.visibilityState === 'visible') connectivity() }
     window.addEventListener('online', connectivity); window.addEventListener('offline', connectivity); window.addEventListener('focus', connectivity)
-    return () => { clearInterval(timer); window.removeEventListener('online', connectivity); window.removeEventListener('offline', connectivity); window.removeEventListener('focus', connectivity) }
+    document.addEventListener('visibilitychange', visibility)
+    return () => { clearInterval(timer); window.removeEventListener('online', connectivity); window.removeEventListener('offline', connectivity); window.removeEventListener('focus', connectivity); document.removeEventListener('visibilitychange', visibility) }
   }, [])
   useEffect(() => {
     if (!data) return
@@ -159,8 +170,8 @@ export default function App() {
     <main className="main-panel" onDragOver={e => { if (e.dataTransfer.types.includes('Files') && !session) { e.preventDefault(); setDragging(true) } }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }} onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f && !deckDialog) void acceptFile(f) }}>
       <input ref={fileInput} type="file" className="sr-only" aria-label="Bild hochladen" accept="image/png,image/jpeg,image/webp" onChange={e => { const file = e.target.files?.[0]; if (file) void acceptFile(file); e.target.value = '' }} />
       <div className={`main-content ${session ? 'session-content' : ''}`}>
-      {session ? <Review ids={session.ids} root={session.root} onClose={() => { setSession(null); setClock(Date.now()) }} onError={onError} /> : draft ? <Editor key={draftVersion} draft={draft} decks={sortedDecks} onClose={() => setDraft(null)} onError={onError} onSaved={id => { selectDeck(id); setDraft(null); setView('library'); setToast({ message: 'Gespeichert', error: false }) }} /> : view === 'settings' ? <Settings prefs={prefs} run={run} cloud={cloud} onError={onError} /> : view === 'create' ? <><div className="page-heading"><h1>Neue Karte</h1><button className="icon-button mobile-settings" aria-label="Einstellungen" onClick={() => openView('settings')}><Settings2 size={22} /></button></div><UploadArea onUpload={() => fileInput.current?.click()} large /></> : <>
-        <div className="page-heading"><h1>{view === 'library' ? 'Bibliothek' : 'Übersicht'}</h1><div className="page-actions"><button className="button primary create-top" aria-label="Karte erstellen" onClick={() => navigate('create')}><Plus size={18} /><span>Karte erstellen</span></button><button className="icon-button mobile-settings" aria-label="Einstellungen" onClick={() => openView('settings')}><Settings2 size={22} /></button></div></div>
+      {session ? <Review ids={session.ids} root={session.root} onClose={() => { setSession(null); setClock(Date.now()) }} onError={onError} onStreak={onStreak} /> : draft ? <Editor key={draftVersion} draft={draft} decks={sortedDecks} onClose={() => setDraft(null)} onError={onError} onSaved={id => { selectDeck(id); setDraft(null); setView('library'); setToast({ message: 'Gespeichert', error: false }) }} /> : view === 'settings' ? <Settings prefs={prefs} run={run} cloud={cloud} onError={onError} /> : view === 'create' ? <><div className="page-heading"><h1>Neue Karte</h1><button className="icon-button mobile-settings" aria-label="Einstellungen" onClick={() => openView('settings')}><Settings2 size={22} /></button></div><UploadArea onUpload={() => fileInput.current?.click()} large /></> : <>
+        <div className="page-heading"><h1>{view === 'library' ? 'Bibliothek' : 'Übersicht'}</h1><div className="page-actions"><StreakBadge streak={streak} /><button className="button primary create-top" aria-label="Karte erstellen" onClick={() => navigate('create')}><Plus size={18} /><span>Karte erstellen</span></button><button className="icon-button mobile-settings" aria-label="Einstellungen" onClick={() => openView('settings')}><Settings2 size={22} /></button></div></div>
         {view === 'library' && <FolderBreadcrumbs decks={sortedDecks} selectedId={root} onSelect={selectDeck} />}
         {view === 'dashboard' && <>
           <StudySummary ready={stats.queue.length} total={data.cards.length} inFolder={inFolder} awaitingCloud={awaitingCloud} cloudMessage={cloudMessage} onReview={beginReview} onLibrary={() => { selectDeck(null); navigate('library') }} onCloud={() => navigate('settings')} />
@@ -184,6 +195,7 @@ export default function App() {
       <button aria-label="Übersicht" aria-current={view === 'dashboard' && !draft ? 'page' : undefined} onClick={() => openMobileView('dashboard')}><LayoutDashboard size={23} aria-hidden="true" /></button>
       <button aria-label="Bibliothek" aria-current={view === 'library' && !draft ? 'page' : undefined} onClick={() => openMobileView('library')}><BookOpen size={23} aria-hidden="true" /></button>
     </nav>}
+    {streakCelebration && <StreakCelebration streak={streakCelebration} />}
     {toast && <div className={`toast ${toast.error ? 'error' : ''}`} role={toast.error ? 'alert' : 'status'}>{toast.error ? <CircleHelp size={20} /> : <Check size={20} />}<span>{toast.message}</span><button className="icon-button" aria-label="Meldung schließen" onClick={() => setToast(null)}><X size={17} /></button></div>}
     {deckDialog && <DeckDialog decks={sortedDecks} initial={deckDialog} onClose={() => setDeckDialog(null)} onError={onError} onSaved={id => { selectDeck(id); setDeckDialog(null) }} />}
   </div>

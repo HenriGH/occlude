@@ -65,6 +65,21 @@ export function reviewDay(now: Date, boundary: number) {
   return { start: +start, end: +end }
 }
 
+export interface DailyStreak { count: number; active: boolean }
+
+// Use calendar dates, rather than 24-hour intervals, across DST and month/year
+// boundaries. Device histories merge as review events, never as competing counters.
+export function dailyStreak(events: ReviewEvent[], now = new Date()): DailyStreak {
+  const calendarDay = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000
+  const today = calendarDay(now)
+  const days = new Set(events.filter(event => Number.isFinite(event.reviewedAt) && event.reviewedAt <= +now).map(event => calendarDay(new Date(event.reviewedAt))))
+  const active = days.has(today)
+  let day = active ? today : today - 1
+  let count = 0
+  while (days.has(day)) { count++; day-- }
+  return { count, active }
+}
+
 export function reviewQueue(cards: Flashcard[], images: ImageRecord[], decks: Deck[], events: ReviewEvent[], prefs: Preferences, root: string | null, now = new Date()) {
   const scope = descendants(decks, root)
   const imageIds = new Set(images.filter(i => scope.has(i.deckId)).map(i => i.id))

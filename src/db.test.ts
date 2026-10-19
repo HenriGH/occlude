@@ -195,3 +195,19 @@ describe('live local review queue', () => {
     expect(await refreshReviewQueue([], deck, new Set([first.id]), new Date(), database)).toEqual([])
   })
 })
+
+
+describe('daily streak feedback', () => {
+  it('celebrates only the first committed rating per day across concurrent callers and retries', async () => {
+    await saveImage(asset, deck, [rect('a'), rect('b')], undefined, database)
+    const [a, b] = await database.cards.toArray()
+    const at = Date.now()
+    const results = await Promise.all([
+      rateCard(a.id, Rating.Again, at, 'first', database),
+      rateCard(b.id, Rating.Hard, at, 'second', database),
+    ])
+    expect(results.filter(Boolean)).toEqual([{ count: 1, active: true }])
+    expect(await rateCard(a.id, Rating.Again, at, 'first', database)).toBeUndefined()
+    expect(await database.reviews.count()).toBe(2)
+  })
+})

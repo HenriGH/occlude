@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { createEmptyCard } from 'ts-fsrs'
-import { descendants, MAX_MASK_LABEL_LENGTH, replay, reviewQueue, SCHEDULER_VERSION, validRect, validateParent, type Asset, type Deck, type Flashcard, type Grade, type ImageRecord, type Preferences, type Rect, type Region, type ReviewEvent } from './domain'
+import { dailyStreak, descendants, MAX_MASK_LABEL_LENGTH, replay, reviewDay, reviewQueue, SCHEDULER_VERSION, validRect, validateParent, type Asset, type Deck, type Flashcard, type Grade, type ImageRecord, type Preferences, type Rect, type Region, type ReviewEvent } from './domain'
 import { enqueue, enqueueImage, type OutboxOperation, type SyncMeta } from './sync/model'
 import { setStorageBlocked } from './storageLifecycle'
 
@@ -103,11 +103,16 @@ export async function rateCard(cardId: string, rating: Grade, at = Date.now(), e
     }
     const card = await database.cards.get(cardId)
     if (!card) throw new Error('Diese Karte existiert nicht mehr.')
+    const { start, end } = reviewDay(new Date(at), 0)
+    const firstToday = await database.reviews.where('reviewedAt').between(start, end, true, false).count() === 0
     const event: ReviewEvent = { id: eventId, cardId, rating, reviewedAt: at, schedulerVersion: SCHEDULER_VERSION }
     await database.reviews.add(event)
     const events = await database.reviews.where('cardId').equals(cardId).toArray()
     await database.cards.update(cardId, { schedule: replay(card.createdAt, events) })
     await enqueue(database, 'review.add', event.id, event as unknown as Record<string, unknown>)
+    // The indexed day check shares the rating transaction across tabs. Only the
+    // first daily review reads the full history for immediate, offline feedback.
+    if (firstToday) return dailyStreak(await database.reviews.toArray(), new Date(at))
   })
 }
 

@@ -37,6 +37,16 @@ After every rating, the round refreshes from local storage: newly due cards join
 the end without duplicating pending cards. Folder scope and daily new-card limits
 still apply. Reviews never wait for a cloud request.
 
+A daily streak appears as a flame and number in Übersicht and Bibliothek. The
+first rated card activates the day; opening the app, revealing an answer or
+creating cards does not count. Consecutive calendar days extend the streak, a
+missed day resets it, and a short flame animation marks the first daily review.
+The count comes from existing synchronized review history across all folders and
+devices, including offline reviews after synchronization. No new cloud schema is
+needed. Days follow local midnight, independently of the configurable FSRS day
+boundary; devices in different time zones may therefore show different day states
+near midnight. Reduced-motion settings keep the feedback static.
+
 The mobile layout uses dynamic viewport height, safe-area insets and a standalone
 web manifest with PNG icons rendered from the existing logo. Browser theme colors
 follow the selected appearance, which is also applied before the app starts to

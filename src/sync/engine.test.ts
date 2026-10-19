@@ -2,7 +2,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PGlite } from '@electric-sql/pglite'
 import { initialize, OccludeDB, rateCard, removeImage, saveDeck, saveImage } from '../db'
-import type { Asset } from '../domain'
+import { dailyStreak, type Asset } from '../domain'
 import { sqlBackend } from '../test/sqlBackend'
 import { SyncEngine, retryDelay } from './engine'
 import { CloudError, contentHash, type Transport } from './transport'
@@ -65,6 +65,35 @@ afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllGlobals(); for (const 
 afterAll(async () => { await pg?.close() })
 
 describe('local outbox + actual PostgreSQL RPC integration', () => {
+  it('continues one account streak across offline devices, deduplicates shared days and retains it after card deletion', async () => {
+    clock = +new Date(2026, 9, 17, 12)
+    vi.spyOn(Date, 'now').mockImplementation(() => clock)
+    const a = await device(), imageId = await addImage(a.db)
+    await a.engine.connect('student@example.test')
+    const card = (await a.db.cards.toArray())[0]
+    expect(await rateCard(card.id, 3, clock, crypto.randomUUID(), a.db)).toEqual({ count: 1, active: true })
+    await a.engine.sync()
+    const b = await device(); await b.engine.connect('student@example.test')
+    const day2 = new Date(clock); day2.setDate(day2.getDate() + 1); clock = +day2
+    expect(dailyStreak(await b.db.reviews.toArray(), day2)).toEqual({ count: 1, active: false })
+    b.transport.online = false
+    expect(await rateCard(card.id, 1, clock, crypto.randomUUID(), b.db)).toEqual({ count: 2, active: true })
+    const day3 = new Date(clock); day3.setDate(day3.getDate() + 1); clock = +day3
+    a.transport.online = false
+    expect(await rateCard(card.id, 4, clock, crypto.randomUUID(), a.db)).toEqual({ count: 1, active: true })
+    b.transport.online = true; await b.engine.sync()
+    a.transport.online = true; await a.engine.sync(); await b.engine.sync()
+    for (const device of [a, b]) expect(dailyStreak(await device.db.reviews.toArray(), day3)).toEqual({ count: 3, active: true })
+    // A day already learned on another device cannot increment or celebrate twice.
+    expect(await rateCard(card.id, 2, clock, crypto.randomUUID(), b.db)).toBeUndefined()
+    await b.engine.sync(); await a.engine.sync()
+    await removeImage(imageId, a.db); await a.engine.sync(); await b.engine.sync()
+    expect(await b.db.cards.count()).toBe(0)
+    expect(dailyStreak(await b.db.reviews.toArray(), day3)).toEqual({ count: 3, active: true })
+    owner = crypto.randomUUID(); await pg.query('insert into auth.users(id) values($1)', [owner])
+    const unrelated = await device(); await unrelated.engine.connect('other@example.test')
+    expect(dailyStreak(await unrelated.db.reviews.toArray(), day3)).toEqual({ count: 0, active: false })
+  })
   it('syncs offline question edits and removal across devices without changing review history or uploading the image again', async () => {
     const a = await device(), imageId = await addImage(a.db)
     await a.engine.connect('student@example.test')

@@ -430,3 +430,41 @@ question scenarios were rerun after the final caption and landscape adjustments.
 Mobile/desktop dark captures and landscape question/answer layouts were inspected.
 These are Chromium checks, not a new physical-device test. The existing Android
 host loads the updated website; these changes do not require another APK.
+
+## Daily study streak (2026-10-19)
+
+The streak is derived from retained review events across the whole workspace,
+not a per-device counter. One or more ratings on a calendar day count once; mere
+login, card creation and answer reveal do not. Yesterday's streak remains gray
+until today's first review; a missed full day resets the count. Local calendar
+dates handle DST, leap days and year changes, independently of the FSRS learning-
+day boundary. Dates use the current device's timezone; no account timezone is
+introduced. Old history is included automatically and future events are ignored.
+
+The first-daily-review check uses the existing reviewedAt index inside the local
+rating transaction, so simultaneous tabs and idempotent retries do not duplicate
+feedback. The full streak is read only for that first daily rating. The badge
+uses the already cached history, with no new network calls, migrations, rewards
+or blocking dialogs. A finite CSS flame/ember animation dismisses itself and
+passes pointer events through; reduced-motion preference disables the animation.
+Returning to a visible page refreshes day-dependent state without a cloud wait.
+
+Five domain cases cover empty/duplicate/future histories, gaps, midnight,
+interleaved device histories, DST and year/leap boundaries. A database test checks
+concurrent first ratings and retries. Actual PostgreSQL RPC integration merges
+three days from two offline devices, verifies same-day deduplication, retained
+streaks after deleting cards, and isolation from another account.
+
+Three browser scenarios verify actual ratings versus reveal/create, instant
+offline feedback, continuing to the next card during the animation, persistence
+without replaying feedback on reload, midnight/missed-day transitions, static
+reduced-motion feedback, a 320px mobile header and historical cloud restoration.
+All external HTTP is mocked or blocked; no real login emails or cloud writes.
+
+Verified: production build, all 83 unit/component/SQL/integration tests
+(`TZ=Europe/Berlin npm test -- --maxWorkers=2`), and 25 selected Chromium scenarios
+against the production preview, including background sync, review queue/zoom,
+mobile navigation/system bars, mask questions and Android host integration.
+Mobile dark/light (including 320px), desktop dark, gray/active badges and the
+animation were visually inspected. Physical-device animation testing was not
+performed. The Android host loads the updated website; no new APK is necessary.

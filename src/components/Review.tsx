@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowLeft, ArrowRight, Check, Eye } from 'lucide-react'
 import { db, rateCard, refreshReviewQueue } from '../db'
-import { scheduler, type Flashcard, type Grade } from '../domain'
+import { scheduler, type DailyStreak, type Flashcard, type Grade } from '../domain'
 import { ImageSurface } from './ImageSurface'
 import { ensureImageAsset } from '../sync/runtime'
 
@@ -12,7 +12,7 @@ function interval(due: Date, now: Date) {
   if (minutes < 1440) return `${Math.round(minutes / 60)} Std.`
   return `${Math.round(minutes / 1440)} Tage`
 }
-export function Review({ ids: initialIds, root, onClose, onError }: { ids: string[]; root: string | null; onClose: () => void; onError: (e: unknown) => void }) {
+export function Review({ ids: initialIds, root, onClose, onError, onStreak }: { ids: string[]; root: string | null; onClose: () => void; onError: (e: unknown) => void; onStreak: (streak: DailyStreak) => void }) {
   const [ids, setIds] = useState(initialIds)
   const [index, setIndex] = useState(0)
   const [revealed, setRevealed] = useState(false)
@@ -40,7 +40,8 @@ export function Review({ ids: initialIds, root, onClose, onError }: { ids: strin
     if (locked.current || !revealed || !data?.asset) return
     locked.current = true; setBusy(true)
     try {
-      await rateCard(data.card.id, grade)
+      const streak = await rateCard(data.card.id, grade)
+      if (streak) onStreak(streak)
       await advance()
     } catch (e) { onError(e) }
     finally { locked.current = false; setBusy(false) }

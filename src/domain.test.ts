@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyCard, Rating } from 'ts-fsrs'
 import { defaultPreferences } from './db'
-import { descendants, replay, reviewDay, reviewQueue, SCHEDULER_VERSION, validRect, validateParent, type Deck, type Flashcard, type ReviewEvent } from './domain'
+import { dailyStreak, descendants, replay, reviewDay, reviewQueue, SCHEDULER_VERSION, validRect, validateParent, type Deck, type Flashcard, type ReviewEvent } from './domain'
 
 const decks: Deck[] = [
   { id: 'parent', parentId: null, name: 'Semester', createdAt: 0, updatedAt: 0 },
@@ -68,5 +68,44 @@ describe('review day and daily new limit', () => {
     expect(result.today).toBe(1)
     cards[1].schedule.reps = 1; cards[1].schedule.due = new Date(+now - 1)
     expect(reviewQueue(cards, images, decks, reviews, { ...defaultPreferences, newLimit: 0 }, 'parent', now).due.map(c => c.id)).toEqual(['b'])
+  })
+})
+
+
+describe('daily study streak', () => {
+  const at = (year: number, month: number, day: number, hour = 12, minute = 0) => +new Date(year, month - 1, day, hour, minute)
+  const review = (time: number, id = crypto.randomUUID()): ReviewEvent => event(id, time, Rating.Good)
+  it('counts only days with reviews, ignores duplicate attempts and future events', () => {
+    const now = new Date(2026, 9, 19, 12)
+    expect(dailyStreak([], now)).toEqual({ count: 0, active: false })
+    const first = review(at(2026, 10, 19, 8))
+    expect(dailyStreak([first, first, review(at(2026, 10, 19, 9)), review(at(2026, 10, 20))], now)).toEqual({ count: 1, active: true })
+    expect(dailyStreak([review(at(2026, 10, 19, 13))], now)).toEqual({ count: 0, active: false })
+  })
+  it("preserves yesterday's count while inactive today, and resets after a missed day", () => {
+    const reviews = [17, 18].map(day => review(at(2026, 10, day)))
+    expect(dailyStreak(reviews, new Date(2026, 9, 19, 12))).toEqual({ count: 2, active: false })
+    expect(dailyStreak(reviews, new Date(2026, 9, 20, 12))).toEqual({ count: 0, active: false })
+    expect(dailyStreak([...reviews, review(at(2026, 10, 20))], new Date(2026, 9, 20, 12))).toEqual({ count: 1, active: true })
+  })
+  it('merges interleaved device histories and backfilled offline days without summing counters', () => {
+    const laptop = [review(at(2026, 10, 17)), review(at(2026, 10, 19))]
+    const phone = [review(at(2026, 10, 18)), review(at(2026, 10, 19))]
+    const now = new Date(2026, 9, 19, 15)
+    expect(dailyStreak(laptop, now).count).toBe(1)
+    expect(dailyStreak([...phone, ...laptop, ...phone], now)).toEqual({ count: 3, active: true })
+    expect(dailyStreak([...laptop, ...phone], now)).toEqual(dailyStreak([...phone, ...laptop], now))
+  })
+  it('changes at local midnight, independently of the FSRS learning-day boundary', () => {
+    const reviews = [review(at(2026, 10, 18, 23, 59)), review(at(2026, 10, 19, 0, 0))]
+    expect(dailyStreak(reviews, new Date(2026, 9, 19, 0, 0))).toEqual({ count: 2, active: true })
+    expect(dailyStreak(reviews.slice(0, 1), new Date(2026, 9, 19, 0, 0))).toEqual({ count: 1, active: false })
+  })
+  it('crosses year, leap-day and daylight-saving changes using calendar dates', () => {
+    for (const [year, month, day] of [[2027, 1, 1], [2028, 3, 1], [2026, 3, 30], [2026, 10, 26]]) {
+      const now = new Date(year, month - 1, day, 12)
+      const days = Array.from({ length: 4 }, (_, i) => { const date = new Date(now); date.setDate(date.getDate() - i); return review(+date) })
+      expect(dailyStreak(days.reverse(), now)).toEqual({ count: 4, active: true })
+    }
   })
 })
