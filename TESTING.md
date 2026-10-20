@@ -1,5 +1,21 @@
 # Validation
 
+## OAuth responses without content
+
+On 2026-10-20, a production-preview Chromium test reproduced the connection
+failure when the access-grant RPC returned HTTP 204 instead of JSON `null`.
+Chromium exposes an empty body stream for that response; rebuilding a Response
+with both the stream and status 204 throws. The shared fetch wrapper now preserves
+bodyless 204/205/304 and HEAD responses and releases their deadlines immediately.
+The consent and disconnection fixtures now use real empty HTTP 204 responses.
+
+After the fix, the production build, all 103 unit/component/SQL/integration tests
+and 11 selected production-browser scenarios passed (OAuth, email recovery and
+background synchronization). Negative OAuth scenarios still refuse approval on
+permission, missing-function and network errors. User-visible diagnostics include
+HTTP status and bounded error codes, without raw SQL, request URLs or tokens.
+Hosted deployment remains required; no database migration is needed for this fix.
+
 ## Question-answer cards and public ChatGPT integration
 
 Validated on 2026-10-20 with Node 24.19.0 and Chromium: production build passed,

@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { authFeedback, callbackFailure, isAuthReturn, readMailPause } from './authFeedback'
+import { authFeedback, callbackFailure, chatgptAccessFeedback, isAuthReturn, readMailPause } from './authFeedback'
 
 describe('auth error recovery', () => {
+  it('distinguishes ChatGPT connection failures without exposing raw server details', () => {
+    expect(chatgptAccessFeedback({ code: 'PGRST202' }, 404)).toContain('Datenbank-Update')
+    expect(chatgptAccessFeedback({ code: '42501' }, 403)).toContain('HTTP 403 · 42501')
+    expect(chatgptAccessFeedback({}, 401)).toContain('erneut bei Occlude anmelden')
+    expect(chatgptAccessFeedback({}, 429)).toContain('kurz warten')
+    expect(chatgptAccessFeedback({}, 503)).toContain('Server')
+    expect(chatgptAccessFeedback({}, 0)).toContain('NETZWERK')
+    expect(chatgptAccessFeedback({ code: 'private-token-in-url' }, 400)).not.toContain('private-token')
+  })
   it('distinguishes project mail limits, request limits and restricted SMTP recipients', () => {
     expect(authFeedback({ code: 'over_email_send_rate_limit' })).toContain('Versandlimit des Projekts')
     expect(authFeedback({ status: 429 })).toContain('Zu viele Anmeldeversuche')

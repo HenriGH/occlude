@@ -1,5 +1,20 @@
 export interface AuthFailure { code?: string; status?: number; message?: string; details?: { code?: string } | null }
 
+export function chatgptAccessFeedback(error: { code?: string }, status: number): string {
+  // Show only bounded machine codes, never SQL details, URLs, tokens or the raw
+  // network error. A failed fetch can include sensitive request data in its stack.
+  const code = /^[A-Z0-9_]{2,32}$/.test(error.code ?? '') ? error.code : undefined
+  const diagnostic = [status > 0 ? `HTTP ${status}` : 'NETZWERK', code].filter(Boolean).join(' · ')
+  let message = 'Die Karten-Freigabe ist fehlgeschlagen. Bitte diesen Fehlercode zur Diagnose weitergeben.'
+  if (status === 0) message = 'Die Karten-Freigabe konnte nicht bestätigt werden. Bitte Verbindung und mögliche Browser-Blocker prüfen und erneut versuchen.'
+  else if (['PGRST202', '42883', '42P01'].includes(code ?? '')) message = 'Das Datenbank-Update für die ChatGPT-Anbindung fehlt oder ist noch nicht verfügbar.'
+  else if (status === 401 || code === 'PGRST301' || code === 'PGRST303') message = 'Die Anmeldung für die Karten-Freigabe wurde abgewiesen. Bitte erneut bei Occlude anmelden und die Verbindung in ChatGPT neu starten.'
+  else if (status === 403 || code === '42501') message = 'Die Datenbank hat die Karten-Freigabe wegen fehlender Berechtigung abgewiesen.'
+  else if (status === 429) message = 'Zu viele Verbindungsversuche. Bitte kurz warten und erneut versuchen.'
+  else if (status >= 500) message = 'Die Karten-Freigabe ist auf dem Server gerade fehlgeschlagen. Bitte später erneut versuchen.'
+  return `${message} (${diagnostic})`
+}
+
 export function authFeedback(error: AuthFailure): string {
   const code = error.code ?? error.details?.code
   if (code === 'over_email_send_rate_limit') return 'Das E-Mail-Versandlimit des Projekts ist erreicht. Eine andere Adresse oder ein geschlossener Tab setzt es nicht zurück. Bitte später erneut versuchen. Ein bereits zugesandter Code kann weiterhin geprüft werden.'

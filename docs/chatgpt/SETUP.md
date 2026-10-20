@@ -147,6 +147,23 @@ die gehostete Website/das Projekt wegen einer Proxy-Sperre nicht direkt aufrufen
 
 ## Entwicklungsprüfungen
 
+### Fehler bei der Verbindung
+
+- **„Requested path is invalid“:** Die Site URL muss vollständig mit `https://`
+  beginnen. In **Authentication → URL Configuration** gehört
+  `https://occlude.henschau2005.workers.dev` hinein; der Authorization Path bleibt
+  `/oauth/consent`. Nach dem Speichern die Verbindung in ChatGPT neu starten.
+- **Leere Antwort mit HTTP 204 bei `occlude_authorize_chatgpt`:** Das ist die
+  erfolgreiche Antwort der Freigabe-Funktion. Ältere Frontend-Versionen behandeln
+  sie in Chrome wegen eines Fehlers im Netzwerk-Wrapper als fehlgeschlagen.
+  Die aktuelle Website-Version veröffentlichen und die Verbindung neu starten.
+  Dafür keine Migration erneut ausführen und keine OAuth-Endpunkte ändern.
+- Die aktualisierte Consent-Seite zeigt bei tatsächlichen Fehlern einen HTTP-
+  beziehungsweise Netzwerkcode direkt an. Dieser Code genügt für die erste
+  Diagnose; geheime Schlüssel, Authorization-Headers und Anmeldelinks sind unnötig.
+
+### Befehle
+
 ```sh
 npm run build
 TZ=Europe/Berlin npm test -- --maxWorkers=2

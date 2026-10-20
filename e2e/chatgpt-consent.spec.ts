@@ -17,7 +17,8 @@ for (const approve of [true, false]) {
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
       expect(route.request().postDataJSON()).toEqual({ p_client_id: clientId, p_client_name: 'ChatGPT' })
       calls.push('capability')
-      return route.fulfill({ headers, body: 'null' })
+      // A PostgreSQL void RPC responds with 204 and no body in production.
+      return route.fulfill({ status: 204, headers })
     })
     await page.route('https://chatgpt.com/connector_platform/oauth/callback?**', route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<h1>Zurück in ChatGPT</h1>' }))
     try {
@@ -35,6 +36,37 @@ for (const approve of [true, false]) {
   })
 }
 
+for (const failure of [{ status: 403, code: '42501', text: 'Berechtigung' }, { status: 404, code: 'PGRST202', text: 'Datenbank-Update' }, { status: 0, code: '', text: 'NETZWERK' }]) {
+  test(`OAuth displays actionable diagnostics for ${failure.status || 'network'} failures without approving access`, async ({ page }) => {
+    const fixture = await cloudFixture(page)
+    const headers = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': '*', 'content-type': 'application/json' }
+    let approvals = 0
+    await page.route('**/auth/v1/oauth/authorizations/**', route => {
+      if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
+      if (route.request().method() === 'POST') { approvals++; return route.abort() }
+      return route.fulfill({ headers, body: JSON.stringify({ authorization_id: 'authorization-fixture', redirect_uri: 'https://chatgpt.com/connector_platform/oauth/callback', client: { id: '00000000-0000-4000-8000-000000000099', name: 'ChatGPT' }, user: { id: '00000000-0000-4000-8000-000000000003' }, scope: 'email' }) })
+    })
+    await page.route('**/rest/v1/rpc/occlude_authorize_chatgpt', route => {
+      if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
+      if (!failure.status) return route.abort()
+      return route.fulfill({ status: failure.status, headers, body: JSON.stringify({ code: failure.code, message: 'private-token-in-url', details: 'private SQL statement', hint: '' }) })
+    })
+    try {
+      await page.goto('/oauth/consent?authorization_id=authorization-fixture')
+      await page.getByRole('textbox', { name: 'E-Mail-Adresse', exact: true }).fill('background@example.test')
+      await page.getByRole('textbox', { name: 'Code aus der E-Mail', exact: true }).fill('123456')
+      await page.getByRole('button', { name: 'Mit Code anmelden', exact: true }).click()
+      await page.getByRole('button', { name: 'Verbinden', exact: true }).click()
+      await expect(page.getByRole('alert')).toContainText(failure.text)
+      if (failure.status) await expect(page.getByRole('alert')).toContainText(`HTTP ${failure.status} · ${failure.code}`)
+      await expect(page.getByRole('alert')).not.toContainText('private-token')
+      await expect(page.getByRole('alert')).not.toContainText('private SQL')
+      await expect(page.getByRole('button', { name: 'Verbinden', exact: true })).toBeEnabled()
+      expect(approvals).toBe(0)
+    } finally { fixture.release() }
+  })
+}
+
 
 test('disconnect immediately revokes the data capability and then the OAuth grant', async ({ page }) => {
   const fixture = await cloudFixture(page), calls: string[] = []
@@ -46,7 +78,7 @@ test('disconnect immediately revokes the data capability and then the OAuth gran
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
     expect(route.request().postDataJSON()).toEqual({ p_client_id: clientId })
     calls.push('capability'); connected = false
-    return route.fulfill({ headers, body: 'null' })
+    return route.fulfill({ status: 204, headers })
   })
   await page.route('**/auth/v1/user/oauth/grants?**', route => {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })

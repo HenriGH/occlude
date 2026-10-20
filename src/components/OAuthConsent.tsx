@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { OAuthAuthorizationDetails, Session } from '@supabase/supabase-js'
 import { Check, X } from 'lucide-react'
 import { configuration, configurationError, supabase } from '../sync/client'
+import { chatgptAccessFeedback } from '../sync/authFeedback'
 import { EmailSignIn } from './EmailSignIn'
 import { BrandMark } from './BrandMark'
 
@@ -44,8 +45,8 @@ export function OAuthConsent() {
     setBusy(true); setError('')
     try {
       if (approve) {
-        const { error } = await supabase.rpc('occlude_authorize_chatgpt', { p_client_id: details.client.id, p_client_name: details.client.name.slice(0, 120) })
-        if (error) throw new Error('Die Karten-Anbindung ist noch nicht eingerichtet. Bitte den Betreiber kontaktieren.')
+        const { error, status } = await supabase.rpc('occlude_authorize_chatgpt', { p_client_id: details.client.id, p_client_name: details.client.name.slice(0, 120) })
+        if (error) throw new Error(chatgptAccessFeedback(error, status))
       }
       const { data, error } = approve ? await supabase.auth.oauth.approveAuthorization(authorizationId, { skipBrowserRedirect: true }) : await supabase.auth.oauth.denyAuthorization(authorizationId, { skipBrowserRedirect: true })
       if (error || !data) throw new Error('Die Verbindung konnte nicht abgeschlossen werden. Bitte erneut versuchen.')
