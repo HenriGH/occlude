@@ -1,0 +1,109 @@
+import { devices, expect, test, type Page } from '@playwright/test'
+import { cloudFixture, createLocalLibrary, localState, seedWorkspace } from './helpers/cloud'
+
+const { defaultBrowserType: _browserType, ...phone } = devices['Pixel 7']
+test.use(phone)
+async function startTextCard(page: Page) {
+  await page.getByRole('button', { name: 'Karte erstellen', exact: true }).click()
+  await page.getByRole('button', { name: 'Frage & Antwort', exact: true }).click()
+}
+
+test('manually created math cards persist, review offline and edit without resetting history', async ({ page, context }) => {
+  await context.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
+  const cdp = await context.newCDPSession(page)
+  await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 24, bottom: 34, left: 0, right: 0 } })
+  await page.goto('/')
+  await startTextCard(page)
+  const front = 'Wie lautet die Produktregel für Logarithmen?'
+  const back = '$$\\log_b(xy)=\\log_b(x)+\\log_b(y)$$\nFür $x,y>0$, $b>0$, $b\\ne1$.'
+  await page.getByRole('textbox', { name: 'Frage', exact: true }).fill(front)
+  await page.getByRole('textbox', { name: 'Antwort', exact: true }).fill(back)
+  await page.getByRole('button', { name: 'Vorschau', exact: true }).click()
+  await expect(page.locator('.basic-preview .katex').first()).toBeVisible()
+  await page.getByRole('button', { name: 'Karte speichern', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Bibliothek', exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('button', { name: `Frage-Antwort-Karte bearbeiten: ${front}` })).toBeVisible()
+  await page.getByRole('button', { name: 'Lernen', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Frage', exact: true })).toHaveText(front)
+  await expect(page.locator('.image-viewport, .zoom-controls')).toHaveCount(0)
+  await context.setOffline(true)
+  await page.getByRole('button', { name: 'Antwort zeigen' }).click()
+  await expect(page.getByRole('region', { name: 'Antwort', exact: true }).locator('.katex').first()).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Antwort', exact: true })).toContainText('Für')
+  await page.screenshot({ path: 'test-results/basic-card-mobile-answer.png' })
+  expect(await page.getByRole('button', { name: /^Gut/ }).evaluate(el => el.getBoundingClientRect().bottom <= innerHeight - 34)).toBe(true)
+  await page.getByRole('button', { name: /^Gut/ }).click()
+  expect((await localState(page)).reviews).toBe(1)
+  await page.getByRole('button', { name: 'Lernen beenden' }).click()
+  await context.setOffline(false)
+  await page.getByRole('button', { name: `Frage-Antwort-Karte bearbeiten: ${front}` }).click()
+  await page.getByRole('textbox', { name: 'Frage', exact: true }).fill('Produktregel mit Voraussetzungen?')
+  await page.getByRole('button', { name: 'Karte speichern', exact: true }).click()
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Frage-Antwort-Karte bearbeiten: Produktregel mit Voraussetzungen?' })).toBeVisible()
+  expect((await localState(page)).reviews).toBe(1)
+})
+
+test('drafts are protected, plain text stays literal, and long answers fit without moving the bottom actions', async ({ page, context }) => {
+  await context.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
+  await page.setViewportSize({ width: 320, height: 640 })
+  await page.goto('/')
+  await startTextCard(page)
+  await page.getByRole('textbox', { name: 'Frage', exact: true }).fill('Entwurf')
+  page.once('dialog', dialog => dialog.dismiss())
+  await page.getByRole('navigation', { name: 'Mobile Navigation' }).getByRole('button', { name: 'Bibliothek' }).click()
+  await expect(page.getByRole('textbox', { name: 'Frage', exact: true })).toHaveValue('Entwurf')
+  const front = '<img src=x onerror=alert(1)> Welche Regel gilt?'
+  await page.getByRole('textbox', { name: 'Frage', exact: true }).fill(front)
+  await page.getByRole('textbox', { name: 'Antwort', exact: true }).fill('Eine ausführliche Erklärung.\n'.repeat(150))
+  await page.getByRole('button', { name: 'Karte speichern', exact: true }).click()
+  await page.getByRole('button', { name: 'Lernen', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Frage', exact: true })).toHaveText(front)
+  await expect(page.locator('.review-basic img')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Antwort zeigen' }).click()
+  expect(await page.locator('.review-basic').evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight)).toBe(true)
+  await expect(page.getByRole('button', { name: /^Gut/ })).toBeInViewport()
+})
+
+test('cloud-created question-answer cards appear through background sync with no import step', async ({ page }) => {
+  const fixture = await cloudFixture(page)
+  try {
+    await page.clock.install()
+    fixture.cloud.snapshot = await seedWorkspace(page, false)
+    await page.reload()
+    await expect(page.getByRole('heading', { name: 'Übersicht', exact: true })).toBeVisible()
+    await expect.poll(() => fixture.cloud.pulls).toBeGreaterThan(0)
+    const now = new Date().toISOString(), deck = fixture.cloud.snapshot.decks[0]
+    fixture.cloud.snapshot.cards.push({ id: crypto.randomUUID(), user_id: deck.user_id, kind: 'basic', region_id: null, image_id: null, deck_id: deck.id, front: 'Die neue Karte aus ChatGPT', back: '$\\log_b(1)=0$', created_at: now, updated_at: now, version: 1, deleted_at: null })
+    await page.clock.fastForward(16000)
+    await expect(page.getByRole('button', { name: 'Frage-Antwort-Karte bearbeiten: Die neue Karte aus ChatGPT' })).toBeVisible()
+    expect((await localState(page)).cards).toBe(3)
+    await expect(page.getByRole('img', { name: /^Streak:/ })).toHaveAccessibleName(/0 Tage/)
+    await page.getByRole('button', { name: 'Frage-Antwort-Karte bearbeiten: Die neue Karte aus ChatGPT' }).click()
+    await expect(page.getByRole('textbox', { name: 'Antwort', exact: true })).toHaveValue('$\\log_b(1)=0$')
+  } finally { fixture.release() }
+})
+
+
+test('image masks and normal cards share one round, scheduling and streak without extra navigation', async ({ page, context }) => {
+  await context.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
+  await createLocalLibrary(page)
+  await startTextCard(page)
+  await page.getByRole('textbox', { name: 'Frage', exact: true }).fill('Eine normale Frage')
+  await page.getByRole('textbox', { name: 'Antwort', exact: true }).fill('Eine normale Antwort')
+  await page.getByRole('button', { name: 'Karte speichern', exact: true }).click()
+  await page.getByRole('button', { name: 'Lernen', exact: true }).click()
+  for (let i = 0; i < 2; i++) {
+    await expect(page.getByTestId('target-mask')).toBeVisible()
+    await page.getByRole('button', { name: 'Antwort zeigen' }).click()
+    await page.getByRole('button', { name: /^Gut/ }).click()
+  }
+  await expect(page.getByRole('region', { name: 'Frage', exact: true })).toHaveText('Eine normale Frage')
+  await page.getByRole('button', { name: 'Antwort zeigen' }).click()
+  await expect(page.getByRole('region', { name: 'Antwort', exact: true })).toHaveText('Eine normale Antwort')
+  await page.getByRole('button', { name: /^Gut/ }).click()
+  await expect(page.getByRole('heading', { name: 'Fertig für jetzt' })).toBeVisible()
+  expect(await localState(page)).toMatchObject({ cards: 3, reviews: 3 })
+})

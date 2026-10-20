@@ -1,0 +1,9 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.118.0",
+    "zod": "npm:zod@4.6.7",
+    "@modelcontextprotocol/sdk/server/index.js": "npm:@modelcontextprotocol/sdk@1.32.1/server/index.js",
+    "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js": "npm:@modelcontextprotocol/sdk@1.32.1/server/webStandardStreamableHttp.js",
+    "@modelcontextprotocol/sdk/types.js": "npm:@modelcontextprotocol/sdk@1.32.1/types.js"
+  }
+}

@@ -1,5 +1,34 @@
 # Validation
 
+## Question-answer cards and public ChatGPT integration
+
+Validated on 2026-10-20 with Node 24.19.0 and Chromium: production build passed,
+all 98 unit/component/SQL/integration tests passed with
+`TZ=Europe/Berlin npm test -- --maxWorkers=2`, and all 45 browser scenarios passed
+against the production preview. `npm audit --omit=dev` found zero vulnerabilities.
+The Supabase function also passed Deno type-checking and the local MCP runtime
+smoke script documented in [ChatGPT setup](docs/chatgpt/SETUP.md).
+
+New coverage exercises local question-answer creation/editing, plain text and safe
+LaTeX rendering, offline answers, draft protection, long mobile text, mixed image/
+text review rounds, unchanged scheduling/history after edits and shared streaks.
+Browser fixtures verify background arrival without import, OAuth login/approval/
+denial/callback, clickjacking protection and capability-before-grant revocation.
+Mobile dark and desktop light rendering were also visually inspected.
+
+Actual migration SQL is exercised with PostgreSQL and independent IndexedDB
+devices, including an MCP request creating cards that both devices synchronize.
+Tests cover old-client compatibility, retained local cards before backend upgrade,
+atomic batches, retry deduplication, card-type immutability, forged ownership,
+cross-account isolation, OAuth table/Storage/RPC restrictions and immediate
+revocation. MCP tests use the official client and cryptographically signed JWTs,
+rejecting altered, expired and wrong-project/client claims.
+
+No hosted migration/function deployment, real ChatGPT tool invocation or public
+directory approval is claimed by these tests. Those remain operator checks in
+[the deployment guide](docs/chatgpt/SETUP.md). All browser external HTTP is mocked
+or blocked; no real mail, private library reads or cloud writes are performed.
+
 ## Phase 1
 
 Commands run from this repository:

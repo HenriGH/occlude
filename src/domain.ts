@@ -9,7 +9,16 @@ export interface Deck { id: string; parentId: string | null; name: string; creat
 export interface Asset { hash: string; blob: Blob; width: number; height: number; mimeType: string }
 export interface ImageRecord { id: string; deckId: string; assetHash: string; createdAt: number; updatedAt: number; width?: number; height?: number; mimeType?: string }
 export interface Region extends Rect { imageId: string }
-export interface Flashcard { id: string; regionId: string; imageId: string; createdAt: number; schedule: Card }
+interface CardBase { id: string; createdAt: number; schedule: Card }
+export interface OcclusionCard extends CardBase { kind?: 'occlusion'; regionId: string; imageId: string }
+export interface BasicCard extends CardBase { kind: 'basic'; deckId: string; front: string; back: string; updatedAt: number; imageId?: never; regionId?: never }
+export type Flashcard = OcclusionCard | BasicCard
+export const MAX_CARD_TEXT_LENGTH = 10000
+export function isBasicCard(card: Flashcard): card is BasicCard { return card.kind === 'basic' }
+export function cardInScope(card: Flashcard, scope: Set<string>, images: ImageRecord[]) {
+  return isBasicCard(card) ? scope.has(card.deckId) : images.some(image => image.id === card.imageId && scope.has(image.deckId))
+}
+export function validBasicText(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_CARD_TEXT_LENGTH }
 export interface ReviewEvent { id: string; cardId: string; rating: Grade; reviewedAt: number; schedulerVersion: string }
 export interface Preferences { id: 'app'; selectedDeckId: string | null; newLimit: number; dayBoundary: number; theme: 'light' | 'dark' | 'system' }
 
@@ -87,7 +96,7 @@ export function reviewQueue(cards: Flashcard[], images: ImageRecord[], decks: De
   const firstReviews = new Map<string, number>()
   for (const event of events) firstReviews.set(event.cardId, Math.min(firstReviews.get(event.cardId) ?? Infinity, event.reviewedAt))
   const introduced = [...firstReviews.values()].filter(t => t >= start && t < end).length
-  const available = cards.filter(c => imageIds.has(c.imageId))
+  const available = cards.filter(c => isBasicCard(c) ? scope.has(c.deckId) : imageIds.has(c.imageId))
   const due = available.filter(c => c.schedule.reps > 0 && +c.schedule.due <= +now).sort((a, b) => +a.schedule.due - +b.schedule.due || a.id.localeCompare(b.id))
   const fresh = available.filter(c => c.schedule.reps === 0).sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)).slice(0, Math.max(0, prefs.newLimit - introduced))
   return { due, fresh, queue: [...due, ...fresh], today: events.filter(e => e.reviewedAt >= start && e.reviewedAt < end).length, introduced }

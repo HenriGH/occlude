@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { createEmptyCard } from 'ts-fsrs'
-import { dailyStreak, descendants, MAX_MASK_LABEL_LENGTH, replay, reviewDay, reviewQueue, SCHEDULER_VERSION, validRect, validateParent, type Asset, type Deck, type Flashcard, type Grade, type ImageRecord, type Preferences, type Rect, type Region, type ReviewEvent } from './domain'
+import { dailyStreak, descendants, MAX_MASK_LABEL_LENGTH, replay, reviewDay, reviewQueue, SCHEDULER_VERSION, validBasicText, validRect, validateParent, type Asset, type BasicCard, type Deck, type Flashcard, type Grade, type ImageRecord, type Preferences, type Rect, type Region, type ReviewEvent } from './domain'
 import { enqueue, enqueueImage, type OutboxOperation, type SyncMeta } from './sync/model'
 import { setStorageBlocked } from './storageLifecycle'
 
@@ -21,6 +21,7 @@ export class OccludeDB extends Dexie {
       regions: 'id, imageId', cards: 'id, &regionId, imageId', reviews: 'id, cardId, reviewedAt', preferences: 'id',
     })
     this.version(2).stores({ outbox: 'id, createdAt, state, entityId', syncMeta: 'key' })
+    this.version(3).stores({ cards: 'id, &regionId, imageId, deckId' })
   }
 }
 export const db = new OccludeDB()
@@ -93,6 +94,33 @@ export async function saveImage(asset: Asset, deckId: string, rects: Rect[], exi
   })
 }
 
+export async function saveBasicCard(deckId: string, front: string, back: string, id = uid(), database = db) {
+  if (!validBasicText(front) || !validBasicText(back)) throw new Error('Frage und Antwort müssen jeweils 1 bis 10.000 Zeichen enthalten.')
+  return database.transaction('rw', database.tables, async () => {
+    if (!await database.decks.get(deckId)) throw new Error('Der gewählte Ordner existiert nicht mehr.')
+    const previous = await database.cards.get(id)
+    if (previous && previous.kind !== 'basic') throw new Error('Dieser Kartentyp kann nicht ersetzt werden.')
+    front = front.trim(); back = back.trim()
+    if (previous?.deckId === deckId && previous.front === front && previous.back === back) return id
+    const now = Date.now()
+    const card: BasicCard = { id, kind: 'basic', deckId, front, back, createdAt: previous?.createdAt ?? now, updatedAt: now, schedule: previous?.schedule ?? createEmptyCard(new Date(now)) }
+    await database.cards.put(card)
+    const { schedule: _schedule, ...metadata } = card
+    await enqueue(database, 'basic.put', id, metadata)
+    return id
+  })
+}
+
+export async function removeBasicCard(id: string, database = db, queueOperation = true) {
+  await database.transaction('rw', database.tables, async () => {
+    const card = await database.cards.get(id)
+    if (!card || card.kind !== 'basic') return
+    if (queueOperation) await enqueue(database, 'basic.delete', id, { id })
+    if (!(await database.syncMeta.get('connection'))) await database.reviews.where('cardId').equals(id).delete()
+    await database.cards.delete(id)
+  })
+}
+
 export async function rateCard(cardId: string, rating: Grade, at = Date.now(), eventId = uid(), database = db) {
   if (![1, 2, 3, 4].includes(rating) || !Number.isFinite(at)) throw new Error('Ungültige Bewertung.')
   return database.transaction('rw', database.tables, async () => {
@@ -136,6 +164,7 @@ export async function deleteDeck(id: string, database = db) {
     await enqueue(database, 'deck.delete', id, {})
     const images = (await database.images.toArray()).filter(i => ids.has(i.deckId))
     for (const image of images) await removeImage(image.id, database, false)
+    for (const card of await database.cards.where('deckId').anyOf([...ids]).toArray()) await removeBasicCard(card.id, database, false)
     await database.decks.bulkDelete([...ids])
     const prefs = await database.preferences.get('app')
     if (prefs?.selectedDeckId && ids.has(prefs.selectedDeckId)) await database.preferences.update('app', { selectedDeckId: null })

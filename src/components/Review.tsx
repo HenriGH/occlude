@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowLeft, ArrowRight, Check, Eye } from 'lucide-react'
 import { db, rateCard, refreshReviewQueue } from '../db'
 import { scheduler, type DailyStreak, type Flashcard, type Grade } from '../domain'
+import { CardText, prepareCardText } from './CardText'
 import { ImageSurface } from './ImageSurface'
 import { ensureImageAsset } from '../sync/runtime'
 
@@ -23,6 +24,7 @@ export function Review({ ids: initialIds, root, onClose, onError, onStreak }: { 
   const result = useLiveQuery(async () => {
     const card = ids[index] ? await db.cards.get(ids[index]) : undefined
     if (!card) return null
+    if (card.kind === 'basic') { await prepareCardText(`${card.front}\n${card.back}`); return { card, asset: undefined, regions: [] } }
     const image = await db.images.get(card.imageId)
     const asset = image ? await db.assets.get(image.assetHash) : undefined
     const regions = await db.regions.where('imageId').equals(card.imageId).toArray()
@@ -31,13 +33,13 @@ export function Review({ ids: initialIds, root, onClose, onError, onStreak }: { 
   const data = result?.card.id === ids[index] ? result : result === null ? null : undefined
   useEffect(() => { setAssetError('') }, [index])
   useEffect(() => {
-    if (!data || data.asset || assetError) return
+    if (!data || data.card.kind === 'basic' || data.asset || assetError) return
     let cancelled = false
-    ensureImageAsset(data.card.imageId).catch(e => { if (!cancelled) setAssetError(e instanceof Error ? e.message : 'Das Bild konnte nicht geladen werden.') })
+    ensureImageAsset(data.card.imageId!).catch(e => { if (!cancelled) setAssetError(e instanceof Error ? e.message : 'Das Bild konnte nicht geladen werden.') })
     return () => { cancelled = true }
   }, [data?.card.id, data?.asset, assetError])
   async function rate(grade: Grade) {
-    if (locked.current || !revealed || !data?.asset) return
+    if (locked.current || !revealed || (!data?.asset && data?.card.kind !== 'basic')) return
     locked.current = true; setBusy(true)
     try {
       const streak = await rateCard(data.card.id, grade)
@@ -65,21 +67,21 @@ export function Review({ ids: initialIds, root, onClose, onError, onStreak }: { 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.repeat || (e.target as HTMLElement).matches('input, select, textarea, button')) return
-      if (e.code === 'Space' && data?.asset) { e.preventDefault(); setRevealed(true) }
+      if (e.code === 'Space' && (data?.asset || data?.card.kind === 'basic')) { e.preventDefault(); setRevealed(true) }
       if (revealed && /^[1-4]$/.test(e.key)) { e.preventDefault(); void rate(Number(e.key) as Grade) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   })
   const complete = index >= ids.length
-  const question = data?.regions.find(r => r.id === data.card.regionId)?.label
+  const question = data?.card.kind === 'basic' ? undefined : data?.regions.find(r => r.id === data.card.regionId)?.label
   return <section className={`review-page${question ? ' has-question' : ''}`}>
     <div className="review-header"><button className="icon-button" aria-label="Lernen beenden" onClick={onClose}><ArrowLeft size={20} /></button><div className="review-progress" role="progressbar" aria-label="Lernfortschritt" aria-valuemin={0} aria-valuemax={ids.length} aria-valuenow={index}><div style={{ width: `${ids.length ? index / ids.length * 100 : 100}%` }} /></div></div>
     {complete ? <div className="session-complete"><span className="success-emblem"><Check size={40} /></span><h1>Fertig für jetzt</h1><p className="muted">{index - skipped.current.size} {index - skipped.current.size === 1 ? 'Karte wiederholt' : 'Karten wiederholt'}.</p><button className="button primary" onClick={onClose}>Zur Übersicht <ArrowRight size={17} /></button></div> : <>
       <div className="review-stage">
-      {data === undefined ? <p role="status">Karte wird geladen …</p> : !data?.asset ? <div className="empty-panel"><h2>{data ? 'Bild auf diesem Gerät nicht verfügbar' : 'Diese Karte wurde gelöscht'}</h2><p>{assetError || (data ? 'Das Originalbild wird geladen …' : 'Die Karte kann gerade nicht bewertet werden.')}</p>{data && assetError && <button className="button" onClick={() => setAssetError('')}>Bild erneut laden</button>}<button className="button" disabled={busy} onClick={() => void skip()}>Überspringen</button></div> : <div className={`review-image ${revealed ? 'revealed' : ''}`}><ImageSurface key={`${index}:${data.card.id}`} asset={data.asset} regions={data.regions} targetId={data.card.regionId} revealed={revealed} /></div>}
+      {data === undefined ? <p role="status">Karte wird geladen …</p> : data?.card.kind === 'basic' ? <div role="region" aria-label={revealed ? 'Antwort' : 'Frage'} tabIndex={0} className={`review-basic${revealed ? ' revealed' : ''}`} key={`${index}:${data.card.id}`}><CardText text={revealed ? data.card.back : data.card.front} /></div> : !data?.asset ? <div className="empty-panel"><h2>{data ? 'Bild auf diesem Gerät nicht verfügbar' : 'Diese Karte wurde gelöscht'}</h2><p>{assetError || (data ? 'Das Originalbild wird geladen …' : 'Die Karte kann gerade nicht bewertet werden.')}</p>{data && assetError && <button className="button" onClick={() => setAssetError('')}>Bild erneut laden</button>}<button className="button" disabled={busy} onClick={() => void skip()}>Überspringen</button></div> : <div className={`review-image ${revealed ? 'revealed' : ''}`}><ImageSurface key={`${index}:${data.card.id}`} asset={data.asset} regions={data.regions} targetId={data.card.regionId} revealed={revealed} /></div>}
       </div>
-      <div className="review-actions">{revealed && question && <p className="review-question">{question}</p>}{data?.asset && (revealed ? <RatingButtons card={data.card} busy={busy} onRate={rate} /> : <button className="button primary reveal-button" disabled={busy} onClick={() => setRevealed(true)}><Eye size={19} /> Antwort zeigen <kbd>Leertaste</kbd></button>)}</div>
+      <div className="review-actions">{revealed && question && <p className="review-question">{question}</p>}{(data?.asset || data?.card.kind === 'basic') && (revealed ? <RatingButtons card={data.card} busy={busy} onRate={rate} /> : <button className="button primary reveal-button" disabled={busy} onClick={() => setRevealed(true)}><Eye size={19} /> Antwort zeigen <kbd>Leertaste</kbd></button>)}</div>
     </>}
   </section>
 }

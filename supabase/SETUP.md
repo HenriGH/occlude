@@ -17,7 +17,15 @@ shared outside trusted administration, revoke it in Supabase's project settings.
 6. In a new query, run `supabase/migrations/202610170002_mask_labels.sql` once.
    It adds optional mask questions and updates the RPCs without replacing cards,
    images or review history. **If synchronization already works on your project,
-   run only this new file; do not rerun the initial migration.**
+   skip files already applied; do not rerun the initial migration.**
+7. In a new query, run `supabase/migrations/202610200001_basic_cards_chatgpt.sql`
+   once, after both earlier migrations. This adds question-answer cards, preserves
+   existing image cards/history, and restricts OAuth clients to explicitly granted
+   ChatGPT capabilities. Working projects need only the files not already applied.
+
+For the public ChatGPT app, also follow [the OAuth/MCP deployment guide](../docs/chatgpt/SETUP.md).
+The SQL migration alone does not deploy the function, enable Supabase's OAuth
+server or publish an app in ChatGPT. Ordinary email login remains available.
 
 For the mask-question update, open SQL Editor → New query, paste the entire new
 file, and click Run. After success, reload the app or use its sync retry action.

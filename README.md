@@ -1,7 +1,7 @@
 # Occlude
 
-A focused image-occlusion flashcard app with a German interface. Paste a lecture
-screenshot, draw masks, save, and review with FSRS. Project files live in this
+A focused flashcard app with a German interface. Create image-occlusion or
+question-answer cards, save locally, and review with FSRS. Project files live in this
 repository, `/workspace/occlude` in the cloud environment.
 
 **Current milestone: Phase 2 integration with background synchronization.** The
@@ -20,6 +20,20 @@ available in settings while synchronization runs in the background.
 An existing library with no cards due remains an existing library;
 an unconnected account or first cloud pull shows a recovery state without a
 first-card prompt. Cached content stays available during synchronization.
+
+Question-answer cards support plain text and LaTeX formulas on both sides, local
+editing, folders, the same review queue and synchronized history. Under **Neu**,
+choose **Frage & Antwort** instead of an image. Editing preserves the card's
+schedule. Formulas use `$...$` or `$$...$$`; HTML is treated as text.
+
+An authenticated MCP integration lets ChatGPT save new cards directly into an
+Occlude account after one-time connection. No model API key or manual import is
+needed. The implementation is tested locally; the public ChatGPT app still needs
+the hosted migration/function, OAuth setup and OpenAI's submission/review process.
+Follow [the deployment guide](docs/chatgpt/SETUP.md), with
+[submission notes](docs/chatgpt/SUBMISSION.md) and a
+[privacy draft](docs/chatgpt/PRIVACY-DRAFT.md) that needs operator details before
+publication. This is not yet a live public listing.
 
 Desktop sidebar folder arrows expand/collapse nested folders independently of selection;
 only folders with children have an arrow. The view is remembered on this browser.
@@ -191,10 +205,11 @@ required action is applying the migration and enabling email authentication:
    have been applied to the hosted project by the agent. See the exact dashboard
    steps and Ubuntu commands in [supabase/SETUP.md](supabase/SETUP.md).
 
-Existing projects with working sync only need the new
-`supabase/migrations/202610170002_mask_labels.sql` migration for mask questions.
-Until then, labelled edits stay local and queued; the app reports the missing
-update rather than letting an old server silently drop the text.
+Existing projects must apply only migrations not yet applied: the mask-question
+migration `202610170002_mask_labels.sql`, then
+`202610200001_basic_cards_chatgpt.sql` for question-answer cards and restricted
+ChatGPT access. Do not rerun existing migrations. Until the backend supports the
+new card type, edits stay local and queued with an update instruction.
 
 ## GitHub and a hosted website
 

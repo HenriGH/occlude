@@ -109,3 +109,17 @@ describe('daily study streak', () => {
     }
   })
 })
+
+
+it('mixes basic and image cards in the same scoped queue and shares the daily introduction limit', () => {
+  const now = new Date(2026, 9, 20, 12)
+  const images = [{ id: 'image', deckId: 'a', assetHash: 'hash', createdAt: +now, updatedAt: +now }]
+  const cards: Flashcard[] = [
+    { id: 'image-card', regionId: 'region', imageId: 'image', createdAt: +now - 10, schedule: createEmptyCard(now) },
+    { id: 'basic', kind: 'basic', deckId: 'b', front: 'Q', back: 'A', createdAt: +now, updatedAt: +now, schedule: createEmptyCard(now) },
+    { id: 'outside', kind: 'basic', deckId: 'other', front: 'Other Q', back: 'Other A', createdAt: +now, updatedAt: +now, schedule: createEmptyCard(now) },
+  ]
+  expect(reviewQueue(cards, images, decks, [], defaultPreferences, 'parent', now).queue.map(c => c.id)).toEqual(['image-card', 'basic'])
+  const reviewed = [{ ...event('previous', +now - 1, Rating.Good), cardId: 'outside' }]
+  expect(reviewQueue(cards, images, decks, reviewed, { ...defaultPreferences, newLimit: 2 }, 'parent', now).fresh.map(c => c.id)).toEqual(['image-card'])
+})

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowDownToLine, ArrowRight, BookOpen, Check, ChevronRight, CircleHelp, Ellipsis, Folder, FolderPlus, ImagePlus, LayoutDashboard, Moon, MoreHorizontal, Plus, Settings2, ShieldCheck, Sun, Trash2, X } from 'lucide-react'
-import { db, defaultPreferences, deleteDeck, initialize, moveImage, removeImage, saveDeck, updatePreferences } from './db'
-import { dailyStreak, descendants, reviewQueue, type DailyStreak, type Deck, type ImageRecord } from './domain'
+import { db, defaultPreferences, deleteDeck, initialize, moveImage, removeImage, removeBasicCard, saveDeck, updatePreferences } from './db'
+import { dailyStreak, descendants, isBasicCard, reviewQueue, type BasicCard, type DailyStreak, type Deck, type ImageRecord } from './domain'
 import { prepareImage } from './images'
 import { Editor, type DraftImage } from './components/Editor'
 import { Review } from './components/Review'
@@ -18,6 +18,9 @@ import { StartupScreen } from './components/StartupScreen'
 import { DeckNavigation } from './components/DeckNavigation'
 import { FolderBreadcrumbs } from './components/FolderBreadcrumbs'
 import { StreakBadge, StreakCelebration } from './components/Streak'
+import { BasicEditor, type BasicDraft } from './components/BasicEditor'
+import { CardText } from './components/CardText'
+import { ChatGPTSettings } from './components/ChatGPTSettings'
 
 type View = 'dashboard' | 'library' | 'create' | 'settings'
 function deckPath(decks: Deck[], id: string): string {
@@ -30,6 +33,8 @@ export default function App() {
   const cloud = useCloud()
   const [view, setView] = useState<View>(returningFromAuth ? 'settings' : 'dashboard')
   const [draft, setDraft] = useState<DraftImage | null>(null)
+  const [basicDraft, setBasicDraft] = useState<BasicDraft | null>(null)
+  const hasDraft = !!draft || !!basicDraft
   const [draftVersion, setDraftVersion] = useState(0)
   const [session, setSession] = useState<{ ids: string[]; root: string | null } | null>(null)
   const [deckDialog, setDeckDialog] = useState<{ deck?: Deck; parentId: string | null } | null>(null)
@@ -77,19 +82,20 @@ export default function App() {
     const deckStats = new Map(decks.map(d => {
       const ids = descendants(decks, d.id)
       const imageIds = new Set((data?.images ?? []).filter(i => ids.has(i.deckId)).map(i => i.id))
-      return [d.id, { count: (data?.cards ?? []).filter(c => imageIds.has(c.imageId)).length, ready: reviewQueue(data?.cards ?? [], data?.images ?? [], decks, data?.reviews ?? [], prefs, d.id, new Date(clock)).queue.length }]
+      return [d.id, { count: (data?.cards ?? []).filter(c => isBasicCard(c) ? ids.has(c.deckId) : imageIds.has(c.imageId)).length, ready: reviewQueue(data?.cards ?? [], data?.images ?? [], decks, data?.reviews ?? [], prefs, d.id, new Date(clock)).queue.length }]
     }))
-    return { stats, images, sortedDecks, deckStats, inFolder: (data?.cards ?? []).filter(c => scopedImageIds.has(c.imageId)).length }
+    return { stats, images, sortedDecks, deckStats, basicCards: (data?.cards ?? []).filter(isBasicCard).filter(c => scope.has(c.deckId)), inFolder: (data?.cards ?? []).filter(c => isBasicCard(c) ? scope.has(c.deckId) : scopedImageIds.has(c.imageId)).length }
   }, [data, root, clock])
-  const { stats, images, sortedDecks, deckStats, inFolder } = library
+  const { stats, images, sortedDecks, deckStats, inFolder, basicCards } = library
+  const entries = [...images.map(image => ({ kind: 'image' as const, id: image.id, createdAt: image.createdAt, image })), ...basicCards.map(card => ({ kind: 'basic' as const, id: card.id, createdAt: card.createdAt, card }))].sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id))
   const selectDeck = (id: string | null) => { void run(() => db.preferences.update('app', { selectedDeckId: id })) }
-  const navigate = (next: View) => { setView(next) }
+  const navigate = (next: View) => { setBasicDraft(null); setView(next) }
   const openView = (next: View) => {
-    if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return
+    if (hasDraft && !confirm('Ungespeicherten Entwurf schließen?')) return
     setDraft(null); navigate(next)
   }
   const openMobileView = (next: 'dashboard' | 'library') => {
-    if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return
+    if (hasDraft && !confirm('Ungespeicherten Entwurf schließen?')) return
     setDraft(null)
     // The library tab is the entry point to all folders on mobile.
     if (next === 'library') selectDeck(null)
@@ -114,9 +120,9 @@ export default function App() {
   async function acceptFile(file: File) {
     if (processingRef.current || session) return
     if (!decks.length) { setDeckDialog({ parentId: null }); onError(new Error('Lege zuerst einen Ordner für deine Karten an.')); return }
-    if (draft && !confirm('Den geöffneten Entwurf durch ein neues Bild ersetzen? Ungespeicherte Änderungen gehen verloren.')) return
+    if (hasDraft && !confirm('Den geöffneten Entwurf durch ein neues Bild ersetzen? Ungespeicherte Änderungen gehen verloren.')) return
     processingRef.current = true; setProcessing(true)
-    try { const asset = await prepareImage(file); setDraft({ asset, regions: [], deckId: root ?? decks[0].id }); setDraftVersion(v => v + 1) }
+    try { const asset = await prepareImage(file); setBasicDraft(null); setDraft({ asset, regions: [], deckId: root ?? decks[0].id }); setDraftVersion(v => v + 1) }
     catch (e) { onError(e) }
     finally { processingRef.current = false; setProcessing(false) }
   }
@@ -136,7 +142,7 @@ export default function App() {
         event.preventDefault()
         if (dialog.dispatchEvent(new Event('cancel', { cancelable: true }))) dialog.close()
       } else if (session) { event.preventDefault(); setSession(null) }
-      else if (draft) { event.preventDefault(); openView('dashboard') }
+      else if (hasDraft) { event.preventDefault(); openView('dashboard') }
       else if (view === 'library' && selected) { event.preventDefault(); selectDeck(selected.parentId) }
       else if (view !== 'dashboard') { event.preventDefault(); navigate('dashboard') }
     }
@@ -161,16 +167,16 @@ export default function App() {
 
   return <div className={`app-shell ${session ? 'review-shell' : ''}`}>
     {!session && <aside className="sidebar">
-      <a className="brand" href="#" onClick={e => { e.preventDefault(); if (!draft || confirm('Ungespeicherten Entwurf schließen?')) { setDraft(null); navigate('dashboard') } }}><BrandMark />occlude<span className="brand-dot">.</span></a>
-      <nav className="primary-nav" aria-label="Hauptnavigation"><button className={view === 'dashboard' && !draft ? 'active' : ''} onClick={() => { if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('dashboard') }}><LayoutDashboard size={18} />Übersicht</button><button className={view === 'library' && !draft ? 'active' : ''} onClick={() => { if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('library') }}><BookOpen size={18} />Bibliothek<span className="nav-count">{data.cards.length}</span></button></nav>
+      <a className="brand" href="#" onClick={e => { e.preventDefault(); if (!hasDraft || confirm('Ungespeicherten Entwurf schließen?')) { setDraft(null); navigate('dashboard') } }}><BrandMark />occlude<span className="brand-dot">.</span></a>
+      <nav className="primary-nav" aria-label="Hauptnavigation"><button className={view === 'dashboard' && !hasDraft ? 'active' : ''} onClick={() => { if (hasDraft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('dashboard') }}><LayoutDashboard size={18} />Übersicht</button><button className={view === 'library' && !hasDraft ? 'active' : ''} onClick={() => { if (hasDraft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('library') }}><BookOpen size={18} />Bibliothek<span className="nav-count">{data.cards.length}</span></button></nav>
       <div className="sidebar-section-heading"><span>Ordner</span><button className="icon-button" aria-label="Ordner erstellen" onClick={() => setDeckDialog({ parentId: root })}><Plus size={16} /></button></div>
       <DeckNavigation decks={sortedDecks} selectedId={root} onSelect={selectDeck} onCreate={() => setDeckDialog({ parentId: root })} />
-      <div className="sidebar-bottom"><button className={`settings-link ${view === 'settings' ? 'active' : ''}`} onClick={() => { if (draft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('settings') }}><Settings2 size={18} />Einstellungen<ChevronRight size={15} /></button></div>
+      <div className="sidebar-bottom"><button className={`settings-link ${view === 'settings' ? 'active' : ''}`} onClick={() => { if (hasDraft && !confirm('Ungespeicherten Entwurf schließen?')) return; setDraft(null); navigate('settings') }}><Settings2 size={18} />Einstellungen<ChevronRight size={15} /></button></div>
     </aside>}
     <main className="main-panel" onDragOver={e => { if (e.dataTransfer.types.includes('Files') && !session) { e.preventDefault(); setDragging(true) } }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }} onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f && !deckDialog) void acceptFile(f) }}>
       <input ref={fileInput} type="file" className="sr-only" aria-label="Bild hochladen" accept="image/png,image/jpeg,image/webp" onChange={e => { const file = e.target.files?.[0]; if (file) void acceptFile(file); e.target.value = '' }} />
       <div className={`main-content ${session ? 'session-content' : ''}`}>
-      {session ? <Review ids={session.ids} root={session.root} onClose={() => { setSession(null); setClock(Date.now()) }} onError={onError} onStreak={onStreak} /> : draft ? <Editor key={draftVersion} draft={draft} decks={sortedDecks} onClose={() => setDraft(null)} onError={onError} onSaved={id => { selectDeck(id); setDraft(null); setView('library'); setToast({ message: 'Gespeichert', error: false }) }} /> : view === 'settings' ? <Settings prefs={prefs} run={run} cloud={cloud} onError={onError} /> : view === 'create' ? <><div className="page-heading"><h1>Neue Karte</h1><button className="icon-button mobile-settings" aria-label="Einstellungen" onClick={() => openView('settings')}><Settings2 size={22} /></button></div><UploadArea onUpload={() => fileInput.current?.click()} large /></> : <>
+      {session ? <Review ids={session.ids} root={session.root} onClose={() => { setSession(null); setClock(Date.now()) }} onError={onError} onStreak={onStreak} /> : draft ? <Editor key={draftVersion} draft={draft} decks={sortedDecks} onClose={() => setDraft(null)} onError={onError} onSaved={id => { selectDeck(id); setDraft(null); setView('library'); setToast({ message: 'Gespeichert', error: false }) }} /> : basicDraft ? <BasicEditor key={'id' in basicDraft ? basicDraft.id : 'new-basic'} draft={basicDraft} decks={sortedDecks} onClose={() => navigate('dashboard')} onImage={() => { setBasicDraft(null); setView('create') }} onError={onError} onSaved={id => { selectDeck(id); setBasicDraft(null); setView('library'); setToast({ message: 'Gespeichert', error: false }) }} /> : view === 'settings' ? <Settings prefs={prefs} run={run} cloud={cloud} onError={onError} /> : view === 'create' ? <><div className="page-heading"><h1>Neue Karte</h1><button className="icon-button mobile-settings" aria-label="Einstellungen" onClick={() => openView('settings')}><Settings2 size={22} /></button></div><div className="card-type-switch" aria-label="Kartentyp"><button aria-pressed="true">Bildkarte</button><button onClick={() => { if (!decks.length) { setDeckDialog({ parentId: null }); return } setBasicDraft({ deckId: root ?? decks[0].id }) }}>Frage &amp; Antwort</button></div><UploadArea onUpload={() => fileInput.current?.click()} large /></> : <>
         <div className="page-heading"><h1>{view === 'library' ? 'Bibliothek' : 'Übersicht'}</h1><div className="page-actions"><StreakBadge streak={streak} /><button className="button primary create-top" aria-label="Karte erstellen" onClick={() => navigate('create')}><Plus size={18} /><span>Karte erstellen</span></button><button className="icon-button mobile-settings" aria-label="Einstellungen" onClick={() => openView('settings')}><Settings2 size={22} /></button></div></div>
         {view === 'library' && <FolderBreadcrumbs decks={sortedDecks} selectedId={root} onSelect={selectDeck} />}
         {view === 'dashboard' && <>
@@ -178,13 +184,14 @@ export default function App() {
           {data.cards.length > 0 && <div className="stats-grid"><Stat label="Fällig" value={stats.due.length} /><Stat label="Neu" value={stats.fresh.length} /><Stat label="Heute gelernt" value={stats.today} /></div>}
         </>}
         {!restoring && <>
-        <div className="section-heading"><div><h2>{root ? selected?.name : 'Ordner'}<span className="count-pill">{root ? `${images.length} ${images.length === 1 ? 'Bild' : 'Bilder'}` : decks.length}</span></h2></div><div className="section-actions">{root && <><button className="icon-button" aria-label="Ausgewählten Ordner bearbeiten" onClick={() => setDeckDialog({ deck: selected, parentId: selected?.parentId ?? null })}><MoreHorizontal size={20} /></button>{stats.queue.length > 0 && <button className="button subtle small-button" onClick={beginReview}>Lernen<ArrowRight size={15} /></button>}</>}<button className="text-button" onClick={() => setDeckDialog({ parentId: root })}><FolderPlus size={16} />Neuer Ordner</button></div></div>
+        <div className="section-heading"><div><h2>{root ? selected?.name : 'Ordner'}<span className="count-pill">{root ? basicCards.length ? `${inFolder} Karten` : `${images.length} ${images.length === 1 ? 'Bild' : 'Bilder'}` : decks.length}</span></h2></div><div className="section-actions">{root && <><button className="icon-button" aria-label="Ausgewählten Ordner bearbeiten" onClick={() => setDeckDialog({ deck: selected, parentId: selected?.parentId ?? null })}><MoreHorizontal size={20} /></button>{stats.queue.length > 0 && <button className="button subtle small-button" onClick={beginReview}>Lernen<ArrowRight size={15} /></button>}</>}<button className="text-button" onClick={() => setDeckDialog({ parentId: root })}><FolderPlus size={16} />Neuer Ordner</button></div></div>
         <div className="deck-grid">{decks.filter(d => d.parentId === root).map(d => {
           const { count, ready } = deckStats.get(d.id)!
           return <div className="deck-card" key={d.id}><button className="deck-open" onClick={() => selectDeck(d.id)}><span className="folder-emblem"><Folder size={23} strokeWidth={1.5} /></span><h3>{d.name}</h3><span className="muted small">{count} Karten</span><div className="deck-card-footer"><span className={ready ? 'due-badge' : 'quiet-badge'}>{ready ? `${ready} ${ready === 1 ? "Karte bereit" : "Karten bereit"}` : count ? 'Nichts fällig' : 'Leer'}</span><ChevronRight size={16} /></div></button><button className="icon-button deck-options" aria-label={`${d.name} bearbeiten`} onClick={() => setDeckDialog({ deck: d, parentId: d.parentId })}><Ellipsis size={19} /></button></div>
         })}</div>
-        <div className="section-heading image-section-heading"><div><h2>{view === 'library' ? 'Alle Bilder' : 'Zuletzt hinzugefügt'}<span className="count-pill">{images.length}</span></h2></div>{view !== 'library' && images.length > 0 && <button className="text-button" onClick={() => navigate('library')}>Alle ansehen<ArrowRight size={15} /></button>}</div>
-        {images.length ? <div className="image-grid">{(view === 'library' ? images : images.slice(0, 6)).map(image => <ImageTile key={image.id} image={image} decks={sortedDecks} count={data.cards.filter(c => c.imageId === image.id).length} onEdit={() => void run(() => editImage(image))} onError={onError} />)}</div> : <UploadArea onUpload={() => fileInput.current?.click()} />}
+        <div className="section-heading image-section-heading"><div><h2>{view === 'library' ? basicCards.length ? 'Karten' : 'Alle Bilder' : 'Zuletzt hinzugefügt'}<span className="count-pill">{entries.length}</span></h2></div>{view !== 'library' && entries.length > 0 && <button className="text-button" onClick={() => navigate('library')}>Alle ansehen<ArrowRight size={15} /></button>}</div>
+        {entries.length ? <div className="image-grid">{(view === 'library' ? entries : entries.slice(0, 6)).map(entry => entry.kind === 'basic' ? <BasicTile key={entry.id} card={entry.card} deckName={decks.find(d => d.id === entry.card.deckId)?.name ?? ''} onEdit={() => setBasicDraft(entry.card)} onDelete={() => void run(async () => { if (confirm('Diese Karte löschen?')) await removeBasicCard(entry.id) })} /> : <ImageTile key={entry.id} image={entry.image} decks={sortedDecks} count={data.cards.filter(c => c.imageId === entry.id).length} onEdit={() => void run(() => editImage(entry.image))} onError={onError} />)}</div> : <UploadArea onUpload={() => fileInput.current?.click()} />}
+
         </>}
         {restoring && view === 'library' && <div className="library-placeholder" role="status">{cloudMessage}<button className="text-button" onClick={() => navigate('settings')}>Cloud öffnen<ArrowRight size={16} /></button></div>}
       </>}
@@ -192,8 +199,8 @@ export default function App() {
       {(dragging || processing) && <div className="drop-overlay" role="status"><div><ImagePlus size={44} /><h2>{processing ? 'Dein Bild wird vorbereitet …' : 'Hier loslassen. Gleich loslernen.'}</h2><p>PNG, JPEG oder WebP · bis zu 15 MB</p></div></div>}
     </main>
     {!session && <nav className="mobile-tabbar" aria-label="Mobile Navigation">
-      <button aria-label="Übersicht" aria-current={view === 'dashboard' && !draft ? 'page' : undefined} onClick={() => openMobileView('dashboard')}><LayoutDashboard size={23} aria-hidden="true" /></button>
-      <button aria-label="Bibliothek" aria-current={view === 'library' && !draft ? 'page' : undefined} onClick={() => openMobileView('library')}><BookOpen size={23} aria-hidden="true" /></button>
+      <button aria-label="Übersicht" aria-current={view === 'dashboard' && !hasDraft ? 'page' : undefined} onClick={() => openMobileView('dashboard')}><LayoutDashboard size={23} aria-hidden="true" /></button>
+      <button aria-label="Bibliothek" aria-current={view === 'library' && !hasDraft ? 'page' : undefined} onClick={() => openMobileView('library')}><BookOpen size={23} aria-hidden="true" /></button>
     </nav>}
     {streakCelebration && <StreakCelebration streak={streakCelebration} />}
     {toast && <div className={`toast ${toast.error ? 'error' : ''}`} role={toast.error ? 'alert' : 'status'}>{toast.error ? <CircleHelp size={20} /> : <Check size={20} />}<span>{toast.message}</span><button className="icon-button" aria-label="Meldung schließen" onClick={() => setToast(null)}><X size={17} /></button></div>}
@@ -207,6 +214,10 @@ function Stat({ label, value }: { label: string; value: number }) {
 function UploadArea({ onUpload, large }: { onUpload: () => void; large?: boolean }) {
   return <div className={`upload-area ${large ? 'large' : ''}`}><span className="upload-icon"><ImagePlus size={26} strokeWidth={1.5} /></span><div><h3>Bild hinzufügen</h3><p>Einfügen, hierher ziehen oder auswählen.</p></div><button className="button subtle" onClick={onUpload}><Plus size={17} />Bild auswählen</button><span className="upload-formats">PNG, JPEG, WebP · bis 15 MB</span></div>
 }
+function BasicTile({ card, deckName, onEdit, onDelete }: { card: BasicCard; deckName: string; onEdit: () => void; onDelete: () => void }) {
+  return <article className="image-tile basic-tile"><button className="basic-tile-open" onClick={onEdit} aria-label={`Frage-Antwort-Karte bearbeiten: ${card.front}`}><span className="basic-tile-preview"><CardText text={card.front} /></span><span className="image-tile-info"><strong>{deckName}</strong><span>Frage &amp; Antwort</span></span></button><button className="icon-button basic-tile-delete" aria-label={`Karte löschen: ${card.front}`} onClick={onDelete}><Trash2 size={16} /></button></article>
+}
+
 function ImageTile({ image, decks, count, onEdit, onError }: { image: ImageRecord; decks: Deck[]; count: number; onEdit: () => void; onError: (e: unknown) => void }) {
   const asset = useLiveQuery(() => db.assets.get(image.assetHash), [image.assetHash])
   const regions = useLiveQuery(() => db.regions.where('imageId').equals(image.id).toArray(), [image.id])
@@ -248,5 +259,5 @@ function Settings({ prefs, run, cloud, onError }: { prefs: typeof defaultPrefere
     navigator.storage?.estimate?.().then(({ usage, quota }) => setStorage(`${((usage ?? 0) / 1024 / 1024).toFixed(1)} MB von ca. ${((quota ?? 0) / 1024 / 1024 / 1024).toFixed(1)} GB verwendet`)).catch(() => setStorage('Speicherbelegung nicht verfügbar'))
     navigator.storage?.persisted?.().then(setPersistent).catch(() => setPersistent(false))
   }, [])
-  return <section className="settings-page"><div className="page-heading"><h1>Einstellungen</h1></div><div className="settings-card"><h2><BookOpen size={20} />Lernplan</h2><label className="setting-row"><span><strong>Neue Karten pro Tag</strong><small>Alle Ordner</small></span><input aria-label="Neue Karten pro Tag" type="number" min={0} max={500} value={prefs.newLimit} onChange={e => { const n = Number(e.target.value); if (Number.isInteger(n) && n >= 0 && n <= 500) void run(() => updatePreferences({ newLimit: n })) }} /></label><label className="setting-row"><span><strong>Tagesbeginn</strong><small>Lokale Uhrzeit</small></span><select value={prefs.dayBoundary} onChange={e => void run(() => updatePreferences({ dayBoundary: Number(e.target.value) }))}>{Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{String(i).padStart(2, '0')}:00 Uhr</option>)}</select></label></div><div className="settings-card"><h2><Sun size={20} />Darstellung</h2><div className="theme-buttons">{([{ id: 'light', label: 'Hell', Icon: Sun }, { id: 'dark', label: 'Dunkel', Icon: Moon }, { id: 'system', label: 'System', Icon: Settings2 }] as const).map(({ id, label, Icon }) => <button className={`button ${prefs.theme === id ? 'selected' : ''}`} key={id} aria-pressed={prefs.theme === id} onClick={() => void run(() => db.preferences.update('app', { theme: id }))}><Icon size={17} />{label}</button>)}</div></div><CloudSettings cloud={cloud} onError={onError} /><div className="settings-card"><h2><ShieldCheck size={20} />Lokaler Speicher</h2><p className="muted small">{storage || 'Speicherbelegung wird ermittelt …'}</p><p className="muted small">{persistent ? 'Der Browser hat dauerhaften Speicher gewährt.' : 'Browser können Website-Daten löschen. Dauerhafter Speicher ist nicht garantiert.'}</p><button className="button subtle" onClick={() => void run(async () => { if (!navigator.storage?.persist) throw new Error('Dieser Browser unterstützt die Anfrage nach dauerhaftem Speicher nicht.'); setPersistent(await navigator.storage.persist()) })}><ArrowDownToLine size={16} />Dauerhaften Speicher anfragen</button><p className="settings-warning">Website-Daten erst löschen, wenn alle Änderungen synchronisiert sind. Offline-Neustart und Export sind noch nicht verfügbar.</p></div></section>
+  return <section className="settings-page"><div className="page-heading"><h1>Einstellungen</h1></div><div className="settings-card"><h2><BookOpen size={20} />Lernplan</h2><label className="setting-row"><span><strong>Neue Karten pro Tag</strong><small>Alle Ordner</small></span><input aria-label="Neue Karten pro Tag" type="number" min={0} max={500} value={prefs.newLimit} onChange={e => { const n = Number(e.target.value); if (Number.isInteger(n) && n >= 0 && n <= 500) void run(() => updatePreferences({ newLimit: n })) }} /></label><label className="setting-row"><span><strong>Tagesbeginn</strong><small>Lokale Uhrzeit</small></span><select value={prefs.dayBoundary} onChange={e => void run(() => updatePreferences({ dayBoundary: Number(e.target.value) }))}>{Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{String(i).padStart(2, '0')}:00 Uhr</option>)}</select></label></div><div className="settings-card"><h2><Sun size={20} />Darstellung</h2><div className="theme-buttons">{([{ id: 'light', label: 'Hell', Icon: Sun }, { id: 'dark', label: 'Dunkel', Icon: Moon }, { id: 'system', label: 'System', Icon: Settings2 }] as const).map(({ id, label, Icon }) => <button className={`button ${prefs.theme === id ? 'selected' : ''}`} key={id} aria-pressed={prefs.theme === id} onClick={() => void run(() => db.preferences.update('app', { theme: id }))}><Icon size={17} />{label}</button>)}</div></div><CloudSettings cloud={cloud} onError={onError} /><ChatGPTSettings cloud={cloud} onError={onError} /><div className="settings-card"><h2><ShieldCheck size={20} />Lokaler Speicher</h2><p className="muted small">{storage || 'Speicherbelegung wird ermittelt …'}</p><p className="muted small">{persistent ? 'Der Browser hat dauerhaften Speicher gewährt.' : 'Browser können Website-Daten löschen. Dauerhafter Speicher ist nicht garantiert.'}</p><button className="button subtle" onClick={() => void run(async () => { if (!navigator.storage?.persist) throw new Error('Dieser Browser unterstützt die Anfrage nach dauerhaftem Speicher nicht.'); setPersistent(await navigator.storage.persist()) })}><ArrowDownToLine size={16} />Dauerhaften Speicher anfragen</button><p className="settings-warning">Website-Daten erst löschen, wenn alle Änderungen synchronisiert sind. Offline-Neustart und Export sind noch nicht verfügbar.</p></div></section>
 }

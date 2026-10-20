@@ -51,9 +51,12 @@ export function supabaseTransport(client: SupabaseClient, configuration: { url: 
     },
     async snapshot(owner) {
       const { scoped } = await authorized(owner)
-      const { data, error } = await scoped.rpc('occlude_snapshot')
-      if (error) failure(error)
-      return data
+      const response = await scoped.rpc('occlude_snapshot_v2')
+      if (!response.error) return response.data
+      if (response.error.code !== 'PGRST202' && response.error.code !== '42883') failure(response.error)
+      const legacy = await scoped.rpc('occlude_snapshot')
+      if (legacy.error) failure(legacy.error)
+      return legacy.data
     },
     async apply(operation, owner) {
       const { scoped } = await authorized(owner)

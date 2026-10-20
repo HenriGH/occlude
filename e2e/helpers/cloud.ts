@@ -41,7 +41,7 @@ export async function cloudFixture(page: Page) {
       return reply({ code: 'refresh_token_not_found', message: 'Refresh token not found' }, 400)
     }
     if (url.pathname === '/auth/v1/user') { cloud.verifications++; return reply(user) }
-    if (url.pathname === '/rest/v1/rpc/occlude_snapshot') {
+    if (['/rest/v1/rpc/occlude_snapshot', '/rest/v1/rpc/occlude_snapshot_v2'].includes(url.pathname)) {
       cloud.pulls++
       if (cloud.holdSnapshot) await snapshotGate.promise
       return reply(cloud.snapshot)
@@ -100,7 +100,7 @@ export async function seedWorkspace(page: Page, expired: boolean) {
     database.close()
     const shared = { user_id: owner, version: 1, deleted_at: null }
     return {
-      schemaVersion: 1, features: ['region-labels'], profile: null, reviews: [],
+      schemaVersion: 1, features: ['region-labels', 'basic-cards'], profile: null, reviews: [],
       decks: decks.map(d => ({ ...shared, id: d.id, name: d.name, parent_id: d.parentId, created_at: new Date(d.createdAt).toISOString(), updated_at: new Date(d.updatedAt).toISOString() })),
       images: images.map(i => ({ ...shared, id: i.id, deck_id: i.deckId, content_hash: i.assetHash, width: i.width, height: i.height, mime_type: i.mimeType, storage_path: `${owner}/${i.assetHash}`, created_at: new Date(i.createdAt).toISOString(), updated_at: new Date(i.updatedAt).toISOString() })),
       regions: regions.map(r => ({ ...shared, id: r.id, image_id: r.imageId, x: r.x, y: r.y, width: r.width, height: r.height, label: r.label ?? '' })),

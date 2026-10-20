@@ -1,6 +1,7 @@
 import { StrictMode, Component, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { OAuthConsent } from './components/OAuthConsent'
 import { StartupScreen } from './components/StartupScreen'
 import './styles.css'
 
@@ -11,4 +12,4 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean
     return this.state.failed ? <StartupScreen error /> : this.props.children
   }
 }
-createRoot(document.getElementById('root')!).render(<StrictMode><ErrorBoundary><App /></ErrorBoundary></StrictMode>)
+createRoot(document.getElementById('root')!).render(<StrictMode><ErrorBoundary>{location.pathname === '/oauth/consent' ? <OAuthConsent /> : <App />}</ErrorBoundary></StrictMode>)

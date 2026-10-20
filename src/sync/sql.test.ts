@@ -13,9 +13,10 @@ const now = Date.parse('2026-10-17T12:00:00Z')
 function operation(kind: WireOperation['kind'], entityId: string, payload: Record<string, unknown>, baseVersion = 0): WireOperation {
   return { id: id(), deviceId: id(), kind, entityId, baseVersion, payload }
 }
-async function asUser(user: string) {
+async function asUser(user: string, clientId?: string) {
   await pg.exec('reset role')
   await pg.query("select set_config('request.jwt.claim.sub',$1,false)", [user])
+  await pg.query("select set_config('request.jwt.claims',$1,false)", [JSON.stringify({ sub: user, ...(clientId ? { client_id: clientId } : {}) })])
   await pg.exec('set role authenticated')
 }
 async function apply(op: WireOperation) { return (await pg.query<{ result: { version: number } }>('select public.occlude_apply_operation($1::jsonb) result', [JSON.stringify(op)])).rows[0].result }
@@ -61,6 +62,7 @@ describe('PostgreSQL migration and tenant security', () => {
       await send(operation('review.add', review, { id: review, cardId: card, rating: 3, reviewedAt: now, schedulerVersion: SCHEDULER_VERSION }))
       await legacy.exec('reset role')
       await legacy.exec(await readFile('supabase/migrations/202610170002_mask_labels.sql', 'utf8'))
+      await legacy.exec(await readFile('supabase/migrations/202610200001_basic_cards_chatgpt.sql', 'utf8'))
       await legacy.exec('set role authenticated')
       const state = (await legacy.query<{ data: any }>('select public.occlude_snapshot() data')).rows[0].data
       expect(state.features).toContain('region-labels')
@@ -90,9 +92,57 @@ describe('PostgreSQL migration and tenant security', () => {
     expect((await snapshot()).regions[0].label).toBe('')
     expect((await snapshot()).cards[0].id).toBe(cardId)
   })
+  it('upgrades image-card data, supports basic edits and keeps legacy snapshots parseable', async () => {
+    const folder = await deck(), basic = id()
+    const original = await image(folder)
+    await apply(operation('basic.put', basic, { id: basic, kind: 'basic', deckId: folder, front: 'Q', back: 'A', createdAt: now, updatedAt: now }))
+    const newRegion = id()
+    await expect(apply(operation('image.put', original.imageId, { ...original.payload, regions: [{ id: newRegion, imageId: original.imageId, x: .1, y: .2, width: .3, height: .1 }], cards: [{ id: basic, imageId: original.imageId, regionId: newRegion, createdAt: now }] }, 1))).rejects.toThrow(/kind is immutable/)
+    const review = id()
+    await apply(operation('review.add', review, { id: review, cardId: basic, rating: 3, reviewedAt: now, schedulerVersion: SCHEDULER_VERSION }))
+    expect((await snapshot()).cards.map(c => c.id)).toEqual([original.cardId])
+    expect((await snapshot()).reviews).toHaveLength(0)
+    const fresh = (await pg.query<{ data: any }>('select public.occlude_snapshot_v2() data')).rows[0].data
+    expect(fresh.features).toContain('basic-cards')
+    expect(fresh.cards).toHaveLength(2)
+    expect(fresh.reviews[0].card_id).toBe(basic)
+    await apply(operation('basic.put', basic, { id: basic, kind: 'basic', deckId: folder, front: 'Edited', back: 'A', createdAt: now, updatedAt: now }, 1))
+    expect((await pg.query<{ front: string }>('select front from public.cards where id=$1', [basic])).rows[0].front).toBe('Edited')
+    await apply(operation('deck.delete', folder, {}, 1))
+    expect((await pg.query<{ deleted_at: string }>('select deleted_at from public.cards where id=$1', [basic])).rows[0].deleted_at).toBeTruthy()
+    expect((await pg.query('select * from public.review_events where id=$1', [review])).rows).toHaveLength(1)
+  })
+  it('isolates MCP access, enforces explicit consent, validates batches atomically and deduplicates retries', async () => {
+    const folder = await deck(), foreign = id(), client = id(), request = id()
+    await asUser(userB); await apply(operation('deck.put', foreign, { id: foreign, name: 'Other', parentId: null, createdAt: now }))
+    await asUser(userA)
+    await pg.query('select public.occlude_authorize_chatgpt($1,$2)', [client, 'ChatGPT'])
+    await asUser(userA, client)
+    expect((await pg.query('select * from public.decks')).rows).toHaveLength(0)
+    await expect(snapshot()).rejects.toThrow(/direct user/)
+    await expect(pg.query('select public.occlude_snapshot_v2()')).rejects.toThrow(/direct user/)
+    await expect(apply(operation('deck.delete', folder, {}, 1))).rejects.toThrow(/direct user/)
+    await expect(pg.query('select public.occlude_authorize_chatgpt($1,$2)', [id(), 'Other'])).rejects.toThrow(/direct user/)
+    const create = (requestId: string, cards: unknown[], target = folder) => pg.query<{ data: any }>('select public.occlude_mcp_create_cards($1,$2,null,$3::jsonb) data', [requestId, target, JSON.stringify(cards)])
+    await expect(create(id(), [{ front: 'Q', back: 'A' }], foreign)).rejects.toThrow(/folder missing/)
+    await expect(create(id(), [{ front: 'Q', back: 'A' }, { front: '', back: 'A' }])).rejects.toThrow()
+    expect((await pg.query('select public.occlude_mcp_list_decks() data')).rows[0]).toBeTruthy()
+    const saved = (await create(request, [{ front: 'Q', back: 'A' }])).rows[0].data
+    expect(saved.created_count).toBe(1)
+    expect((await create(request, [{ front: 'Q', back: 'A' }])).rows[0].data).toEqual(saved)
+    await expect(create(request, [{ front: 'Different', back: 'A' }])).rejects.toThrow(/reused/)
+    await expect(create(id(), [{ front: 'Q', back: 'A', user_id: userB }])).rejects.toThrow(/forged/)
+    await asUser(userB, client)
+    await expect(create(id(), [{ front: 'Q', back: 'A' }])).rejects.toThrow(/not authorized/)
+    await asUser(userA)
+    expect((await pg.query("select * from public.cards where kind='basic'")).rows).toHaveLength(1)
+    await pg.query('select public.occlude_revoke_chatgpt($1)', [client])
+    await asUser(userA, client)
+    await expect(create(id(), [{ front: 'Q', back: 'A' }])).rejects.toThrow(/revoked/)
+  })
   it('makes all data tables RLS-protected and denies unauthenticated RPC calls', async () => {
     const tables = (await pg.query<{ relname: string; relrowsecurity: boolean }>("select relname,relrowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r'")).rows
-    expect(tables).toHaveLength(7)
+    expect(tables).toHaveLength(8)
     expect(tables.every(t => t.relrowsecurity)).toBe(true)
     await pg.exec('reset role; set role anon')
     await expect(snapshot()).rejects.toThrow(/permission denied/)

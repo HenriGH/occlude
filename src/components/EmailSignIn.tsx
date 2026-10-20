@@ -4,7 +4,7 @@ import { KeyRound, LogIn } from 'lucide-react'
 import { authFeedback, mailCooldownKey, readMailPause, reserveMailPause } from '../sync/authFeedback'
 
 type EmailAuth = Pick<SupabaseClient['auth'], 'signInWithOtp' | 'verifyOtp'>
-export function EmailSignIn({ auth, projectUrl }: { auth: EmailAuth; projectUrl: string }) {
+export function EmailSignIn({ auth, projectUrl, redirectPath = '/' }: { auth: EmailAuth; projectUrl: string; redirectPath?: string }) {
   const key = mailCooldownKey(projectUrl)
   const [email, setEmail] = useState('')
   const [token, setToken] = useState('')
@@ -31,7 +31,7 @@ export function EmailSignIn({ auth, projectUrl }: { auth: EmailAuth; projectUrl:
     locked.current = true; setBusy('send'); setError(''); setNotice('')
     setUntil(reserveMailPause(key)); setNow(Date.now())
     try {
-      const { error } = await auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: new URL('/', location.origin).href } })
+      const { error } = await auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: new URL(redirectPath.startsWith('/') && !redirectPath.startsWith('//') ? redirectPath : '/', location.origin).href } })
       if (error) { setError(authFeedback(error)); return }
       setNotice('E-Mail angefordert. Code unten eingeben oder den Link in diesem Browser öffnen.')
     } catch { setError('Die Anmelde-E-Mail konnte nicht angefordert werden. Bitte Verbindung prüfen und kurz warten.') }

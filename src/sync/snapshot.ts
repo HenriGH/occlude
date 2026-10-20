@@ -1,13 +1,14 @@
 import { createEmptyCard } from 'ts-fsrs'
-import { descendants, MAX_MASK_LABEL_LENGTH, replay, SCHEDULER_VERSION, validRect, type Deck, type Flashcard, type ImageRecord, type Preferences, type Region, type ReviewEvent } from '../domain'
+import { descendants, MAX_MASK_LABEL_LENGTH, replay, SCHEDULER_VERSION, validBasicText, validRect, type BasicCard, type OcclusionCard, type Deck, type Flashcard, type ImageRecord, type Preferences, type Region, type ReviewEvent } from '../domain'
 import type { OccludeDB } from '../db'
 import { versionKey } from './model'
 
 interface Versioned<T> { data: T; version: number; deleted: boolean }
 export interface Snapshot {
   regionLabels: boolean
+  basicCards: boolean
   decks: Versioned<Deck>[]; images: Versioned<ImageRecord>[]; regions: Versioned<Region>[]
-  cards: Versioned<Omit<Flashcard, 'schedule'>>[]; reviews: ReviewEvent[]
+  cards: Versioned<Omit<OcclusionCard, 'schedule'> | Omit<BasicCard, 'schedule'>>[]; reviews: ReviewEvent[]
   profile: { version: number; settings: Pick<Preferences, 'newLimit' | 'dayBoundary'> } | null
 }
 const fail = (): never => { throw new Error('Ungültige Cloud-Daten. Der lokale Speicher wurde nicht ersetzt.') }
@@ -49,7 +50,15 @@ export function parseSnapshot(input: unknown, owner: string): Snapshot {
     if (!validRect(region)) return fail()
     return wrap(r, region)
   })
-  const cards = rows('cards').map(r => wrap(r, { id: uuid(r.id), imageId: uuid(r.image_id), regionId: uuid(r.region_id), createdAt: timestamp(r.created_at) }))
+  const cards = rows('cards').map(r => {
+    if (r.kind === 'basic') {
+      if (!Array.isArray(root.features) || !root.features.includes('basic-cards')) return fail()
+      if (!validBasicText(r.front) || !validBasicText(r.back) || r.region_id !== null || r.image_id !== null) return fail()
+      return wrap<Omit<BasicCard, 'schedule'>>(r, { id: uuid(r.id), kind: 'basic', deckId: uuid(r.deck_id), front: r.front, back: r.back, createdAt: timestamp(r.created_at), updatedAt: timestamp(r.updated_at) })
+    }
+    if (r.kind !== undefined && r.kind !== 'occlusion') return fail()
+    return wrap<Omit<OcclusionCard, 'schedule'>>(r, { id: uuid(r.id), imageId: uuid(r.image_id), regionId: uuid(r.region_id), createdAt: timestamp(r.created_at) })
+  })
   const reviews = rows('reviews').map(r => {
     if (r.scheduler_version !== SCHEDULER_VERSION) throw new Error('Unbekannte Scheduler-Version in der Cloud. Bitte App aktualisieren.')
     return { id: uuid(r.id), cardId: uuid(r.card_id), rating: integer(r.rating, 1, 4) as ReviewEvent['rating'], reviewedAt: timestamp(r.reviewed_at), schedulerVersion: SCHEDULER_VERSION }
@@ -63,9 +72,9 @@ export function parseSnapshot(input: unknown, owner: string): Snapshot {
   if (decks.some(d => d.data.parentId && !decks.some(p => p.data.id === d.data.parentId)) ||
     images.some(i => !decks.some(d => d.data.id === i.data.deckId)) ||
     regions.some(r => !images.some(i => i.data.id === r.data.imageId)) ||
-    cards.some(c => !regions.some(r => r.data.id === c.data.regionId && r.data.imageId === c.data.imageId)) ||
+    cards.some(({ data: c }) => c.kind === 'basic' ? !decks.some(d => d.data.id === c.deckId) : !regions.some(r => r.data.id === c.regionId && r.data.imageId === c.imageId)) ||
     reviews.some(e => !cards.some(c => c.data.id === e.cardId))) return fail()
-  return { decks, images, regions, cards, reviews, profile, regionLabels: Array.isArray(root.features) && root.features.includes('region-labels') }
+  return { decks, images, regions, cards, reviews, profile, regionLabels: Array.isArray(root.features) && root.features.includes('region-labels'), basicCards: Array.isArray(root.features) && root.features.includes('basic-cards') }
 }
 
 // Caller owns a write transaction over metadata, reviews, outbox and syncMeta.
@@ -82,6 +91,7 @@ export async function mergeSnapshot(database: OccludeDB, snapshot: Snapshot) {
   const nextMeta = new Map<string, unknown>()
   const remember = (key: string, value: unknown) => { if (versions.get(key) !== value) nextMeta.set(key, value) }
   remember('regionLabels', snapshot.regionLabels)
+  remember('basicCards', snapshot.basicCards)
   const connection = versions.get('connection') as { userId: string } | undefined
   if (connection) for (const image of snapshot.images) {
     // The RPC only publishes metadata after the immutable Storage object exists.
@@ -115,7 +125,9 @@ export async function mergeSnapshot(database: OccludeDB, snapshot: Snapshot) {
       changedCards.add(data.id)
       return [data.id, { ...data, schedule: createEmptyCard(new Date(data.createdAt)) }]
     }))
+    if (!snapshot.basicCards) for (const card of cards) if (card.kind === 'basic') nextCards.set(card.id, card)
     for (const d of snapshot.decks) remember(versionKey('deck.put', d.data.id), d.version)
+    for (const c of snapshot.cards) if (c.data.kind === 'basic') remember(versionKey('basic.put', c.data.id), c.version)
     for (const i of snapshot.images) remember(versionKey('image.put', i.data.id), i.version)
     if (snapshot.profile) {
       if (prefs?.newLimit !== snapshot.profile.settings.newLimit || prefs?.dayBoundary !== snapshot.profile.settings.dayBoundary) await database.preferences.update('app', snapshot.profile.settings)

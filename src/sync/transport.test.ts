@@ -53,3 +53,20 @@ describe('verified token reuse and account isolation', () => {
     expect(requests).toHaveLength(1)
   })
 })
+
+
+it('falls back to the legacy snapshot only when the new RPC is absent, not on arbitrary failures', async () => {
+  const { transport, requests } = fixture()
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const path = new URL(input as string).pathname
+    requests.push({ path, token: new Headers(init?.headers).get('authorization') })
+    return path.endsWith('_v2') ? Response.json({ code: 'PGRST202', message: 'Missing function' }, { status: 404 }) : Response.json({ schemaVersion: 1 })
+  })
+  expect(await transport.snapshot('a')).toEqual({ schemaVersion: 1 })
+  expect(requests.map(r => r.path)).toEqual(['/rest/v1/rpc/occlude_snapshot_v2', '/rest/v1/rpc/occlude_snapshot'])
+  requests.length = 0
+  vi.mocked(fetch).mockImplementation(async () => Response.json({ code: '42501', message: 'Denied' }, { status: 403 }))
+  const before = vi.mocked(fetch).mock.calls.length
+  await expect(transport.snapshot('a')).rejects.toThrow('Denied')
+  expect(vi.mocked(fetch).mock.calls.length - before).toBe(1)
+})

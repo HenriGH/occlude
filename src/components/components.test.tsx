@@ -1,8 +1,9 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ImageSurface } from './ImageSurface'
 import { Editor } from './Editor'
+import { CardText } from './CardText'
 import type { Asset, Rect } from '../domain'
 
 const asset: Asset = { hash: 'image', blob: new Blob(['x']), width: 1000, height: 600, mimeType: 'image/webp' }
@@ -47,5 +48,15 @@ describe('editor interaction', () => {
     await user.click(screen.getByRole('button', { name: 'Rückgängig' }))
     expect(screen.getByRole('button', { name: '2 Karten speichern' })).toBeEnabled()
     expect(screen.getAllByTestId('occlusion-mask')).toHaveLength(2)
+  })
+})
+
+
+describe('question-answer content rendering', () => {
+  it('renders formulas while keeping HTML literal and refusing untrusted LaTeX links', async () => {
+    const { container } = render(<CardText text={'<img src=x onerror=alert(1)> $\\log_b(xy)$ $\\href{javascript:alert(1)}{click}$'} />)
+    await waitFor(() => expect(container.querySelector('.katex')).not.toBeNull())
+    expect(container.textContent).toContain('<img src=x onerror=alert(1)>')
+    expect(container.querySelector('img, a[href^="javascript:"]')).toBeNull()
   })
 })

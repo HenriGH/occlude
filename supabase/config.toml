@@ -1,0 +1,13 @@
+project_id = "occlude"
+
+# OAuth token verification runs in the handler. The gateway must also allow
+# anonymous discovery so ChatGPT can find the authorization server.
+[functions.occlude-mcp]
+verify_jwt = false
+entrypoint = "./functions/occlude-mcp/index.ts"
+import_map = "./functions/occlude-mcp/deno.json"
+
+[auth.oauth_server]
+enabled = true
+authorization_url_path = "/oauth/consent"
+allow_dynamic_registration = true

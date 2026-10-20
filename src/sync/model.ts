@@ -1,6 +1,6 @@
 import type { OccludeDB } from '../db'
 
-export type OperationKind = 'deck.put' | 'deck.delete' | 'image.put' | 'image.delete' | 'review.add' | 'settings.put'
+export type OperationKind = 'deck.put' | 'deck.delete' | 'image.put' | 'image.delete' | 'basic.put' | 'basic.delete' | 'review.add' | 'settings.put'
 export interface WireOperation {
   id: string; deviceId: string; kind: OperationKind; entityId: string
   baseVersion: number; payload: Record<string, unknown>

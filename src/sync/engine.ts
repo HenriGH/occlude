@@ -22,7 +22,7 @@ export class SyncEngine {
       await this.database.syncMeta.put({ key: 'connection', value: { userId: owner, email, locked: false } satisfies Connection })
       if (!prior) {
         const decks = await this.database.decks.toArray()
-        const emptySeed = decks.length === 1 && decks[0].name === 'Mein Studium' && await this.database.images.count() === 0 && await this.database.reviews.count() === 0
+        const emptySeed = decks.length === 1 && decks[0].name === 'Mein Studium' && await this.database.images.count() === 0 && await this.database.cards.count() === 0 && await this.database.reviews.count() === 0
         if (emptySeed && snapshot.decks.some(d => !d.deleted)) await this.database.decks.clear()
         else {
           // Parent-first ordering; each command is persisted before any network write.
@@ -35,6 +35,7 @@ export class SyncEngine {
             if (!progress) throw new Error('Die lokale Ordnerstruktur enthält einen Kreis.')
           }
           for (const image of await this.database.images.toArray()) await enqueueImage(this.database, image.id)
+          for (const card of await this.database.cards.toArray()) if (card.kind === 'basic') { const { schedule: _schedule, ...metadata } = card; await enqueue(this.database, 'basic.put', card.id, metadata) }
           for (const event of await this.database.reviews.toArray()) await enqueue(this.database, 'review.add', event.id, event as unknown as Record<string, unknown>)
           if (!snapshot.profile) {
             const prefs = (await this.database.preferences.get('app'))!
@@ -83,6 +84,11 @@ export class SyncEngine {
         if (blocked.has(group) || operation.state === 'conflict' || operation.nextAttemptAt > this.clock()) { blocked.add(group); continue }
         if (processed++ === 100) { this.requested = true; break }
         try {
+          if (operation.kind.startsWith('basic.') && (await this.database.syncMeta.get('basicCards'))?.value !== true) {
+            const snapshot = parseSnapshot(await this.transport.snapshot(connection.userId), connection.userId)
+            if (!snapshot.basicCards) throw new CloudError('Für Frage-Antwort-Karten fehlt das Supabase-Update. Bitte 202610200001_basic_cards_chatgpt.sql ausführen. Die Änderung bleibt lokal gespeichert.')
+            await this.database.syncMeta.put({ key: 'basicCards', value: true })
+          }
           if (operation.kind === 'image.put') {
             const regions = operation.payload.regions as { label?: string }[]
             if (regions.some(r => r.label !== undefined) && (await this.database.syncMeta.get('regionLabels'))?.value !== true) {
@@ -142,7 +148,7 @@ export class SyncEngine {
       await this.database.transaction('rw', this.database.tables, async () => {
         const op = await this.database.outbox.get(operationId)
         if (!op || op.state !== 'conflict' || op.kind === 'review.add') return
-        const row = op.kind.startsWith('deck.') ? snapshot.decks.find(d => d.data.id === op.entityId) : op.kind.startsWith('image.') ? snapshot.images.find(i => i.data.id === op.entityId) : snapshot.profile ? { version: snapshot.profile.version, deleted: false } : undefined
+        const row = op.kind.startsWith('deck.') ? snapshot.decks.find(d => d.data.id === op.entityId) : op.kind.startsWith('image.') ? snapshot.images.find(i => i.data.id === op.entityId) : op.kind.startsWith('basic.') ? snapshot.cards.find(c => c.data.id === op.entityId) : snapshot.profile ? { version: snapshot.profile.version, deleted: false } : undefined
         if (row?.deleted) throw new Error('Die Cloud-Version wurde gelöscht. Die lokale Änderung bleibt sicher gespeichert; gelöschte Karten werden nicht automatisch wiederhergestellt.')
         let version = row?.version ?? 0
         const related = (await this.database.outbox.orderBy('createdAt').toArray()).filter(o => versionKey(o.kind, o.entityId) === versionKey(op.kind, op.entityId))

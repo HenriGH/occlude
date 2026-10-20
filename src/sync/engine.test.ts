@@ -1,12 +1,13 @@
 // @vitest-environment node
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PGlite } from '@electric-sql/pglite'
-import { initialize, OccludeDB, rateCard, removeImage, saveDeck, saveImage } from '../db'
+import { initialize, OccludeDB, rateCard, removeImage, removeBasicCard, saveBasicCard, saveDeck, saveImage } from '../db'
 import { dailyStreak, type Asset } from '../domain'
 import { sqlBackend } from '../test/sqlBackend'
 import { SyncEngine, retryDelay } from './engine'
 import { CloudError, contentHash, type Transport } from './transport'
 import { parseSnapshot } from './snapshot'
+import { createMcpHandler } from '../../server/mcp'
 import type { Connection, WireOperation } from './model'
 
 let pg: PGlite, owner: string
@@ -19,17 +20,19 @@ class TestTransport implements Transport {
   loseAck?: WireOperation['kind']
   interruptUpload = false
   requests: WireOperation[] = []
+  oauthClient?: string
   constructor(readonly owner: string) {}
   private check(expected = this.owner) { if (!this.online) throw new Error('Offline'); if (expected !== this.owner) throw new Error('Account mismatch') }
   async userId() { this.check(); return this.owner }
   async query<T>(sql: string, values: unknown[] = []) {
     return pg.transaction(async tx => {
       await tx.query("select set_config('request.jwt.claim.sub',$1,true)", [this.owner])
+      await tx.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: this.owner, role: 'authenticated', ...(this.oauthClient ? { client_id: this.oauthClient } : {}) })])
       await tx.exec('set local role authenticated')
       return tx.query<T>(sql, values)
     })
   }
-  async snapshot(expected: string) { this.check(expected); return (await this.query<{ data: unknown }>('select public.occlude_snapshot() data')).rows[0].data }
+  async snapshot(expected: string) { this.check(expected); return (await this.query<{ data: unknown }>('select public.occlude_snapshot_v2() data')).rows[0].data }
   async apply(operation: WireOperation, expected: string) {
     this.check(expected); this.requests.push(operation)
     try { await this.query('select public.occlude_apply_operation($1::jsonb)', [JSON.stringify(operation)]) }
@@ -65,6 +68,73 @@ afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllGlobals(); for (const 
 afterAll(async () => { await pg?.close() })
 
 describe('local outbox + actual PostgreSQL RPC integration', () => {
+  it('creates cards through the actual MCP handler, automatically pulls them to two devices and preserves edits/reviews/deletion', async () => {
+    const a = await device(), b = await device()
+    await a.engine.connect('student@example.test'); await b.engine.connect('student@example.test')
+    const clientId = crypto.randomUUID()
+    await a.transport.query('select public.occlude_authorize_chatgpt($1,$2)', [clientId, 'ChatGPT'])
+    const oauth = new TestTransport(owner); oauth.oauthClient = clientId
+    const rpc = async (name: string, args?: Record<string, unknown>) => {
+      try {
+        const response = name === 'occlude_mcp_list_decks'
+          ? await oauth.query<{ data: unknown }>('select public.occlude_mcp_list_decks() data')
+          : await oauth.query<{ data: unknown }>('select public.occlude_mcp_create_cards($1,$2,$3,$4::jsonb) data', [args!.p_request_id, args!.p_deck_id, args!.p_deck_name, JSON.stringify(args!.p_cards)])
+        return { data: response.rows[0].data, error: null }
+      } catch (e) { return { data: null, error: { message: String(e), code: '42501' } } }
+    }
+    const handler = createMcpHandler({ supabaseUrl: 'https://test.supabase.co', publishableKey: 'public', appUrl: 'https://occlude.example' }, async () => ({ userId: owner, clientId, rpc }))
+    const requestId = crypto.randomUUID()
+    const arguments_ = { request_id: requestId, deck_name: 'Logarithmusregeln', cards: [{ front: 'Produktregel?', back: '$\\log_b(xy)=\\log_b(x)+\\log_b(y)$ für x,y>0; b>0, b≠1.' }, { front: 'Quotientenregel?', back: 'Die Differenz der Logarithmen.' }] }
+    const send = () => handler(new Request('https://test.supabase.co/functions/v1/occlude-mcp/mcp', { method: 'POST', headers: { Authorization: 'Bearer fixture', 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-06-18' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'create_flashcards', arguments: arguments_ } }) }))
+    const first = await (await send()).json()
+    expect(first.result.isError).not.toBe(true)
+    expect(first.result.structuredContent.created_count).toBe(2)
+    expect((await (await send()).json()).result.structuredContent.card_ids).toEqual(first.result.structuredContent.card_ids)
+    await a.engine.sync(); await b.engine.sync()
+    for (const device of [a, b]) {
+      expect(await device.db.cards.count()).toBe(2)
+      expect(await device.db.images.count()).toBe(0)
+      expect(await device.db.assets.count()).toBe(0)
+      expect((await device.db.cards.toArray()).every(card => card.kind === 'basic')).toBe(true)
+    }
+    const card = (await b.db.cards.toArray())[0]
+    if (card.kind !== 'basic') throw new Error('Expected a basic card')
+    await rateCard(card.id, 3, clock, crypto.randomUUID(), b.db)
+    await saveBasicCard(card.deckId, 'Überarbeitete Frage', card.back, card.id, b.db)
+    await b.engine.sync(); await a.engine.sync()
+    expect(await a.db.cards.get(card.id)).toMatchObject({ front: 'Überarbeitete Frage', schedule: { reps: 1 } })
+    await removeBasicCard(card.id, a.db); await a.engine.sync(); await b.engine.sync()
+    expect(await b.db.cards.get(card.id)).toBeUndefined()
+    expect(await b.db.reviews.count()).toBe(1)
+  })
+  it('adopts an unreviewed local text card when connecting to an account with an existing library', async () => {
+    const a = await device(); await addImage(a.db); await a.engine.connect('student@example.test')
+    const b = await device(), folder = (await b.db.decks.toArray())[0].id
+    const id = await saveBasicCard(folder, 'Lokale Frage', 'Lokale Antwort', undefined, b.db)
+    await b.engine.connect('student@example.test')
+    expect(await b.db.cards.get(id)).toMatchObject({ kind: 'basic', deckId: folder })
+    expect(await b.db.decks.get(folder)).toBeDefined()
+    await a.engine.sync()
+    expect(await a.db.cards.get(id)).toMatchObject({ front: 'Lokale Frage' })
+    expect(await a.db.cards.count()).toBe(2)
+  })
+  it('keeps basic changes local against an old backend and synchronizes them after the upgrade', async () => {
+    const a = await device(); await a.engine.connect('student@example.test')
+    const folder = (await a.db.decks.toArray())[0].id
+    const legacy = vi.spyOn(a.transport, 'snapshot')
+    const current = await a.transport.snapshot(owner) as Record<string, unknown>
+    legacy.mockResolvedValue({ ...current, features: ['region-labels'] })
+    await a.db.syncMeta.delete('basicCards')
+    const cardId = await saveBasicCard(folder, 'Q', 'A', undefined, a.db)
+    await a.engine.sync()
+    expect(await a.db.cards.get(cardId)).toMatchObject({ front: 'Q' })
+    expect(await a.db.outbox.count()).toBe(1)
+    expect((await a.db.syncMeta.get('status'))?.value).toMatchObject({ error: expect.stringContaining('202610200001_basic_cards_chatgpt.sql') })
+    legacy.mockRestore(); await a.engine.retry()
+    expect(await a.db.outbox.count()).toBe(0)
+    const b = await device(); await b.engine.connect('student@example.test')
+    expect(await b.db.cards.get(cardId)).toMatchObject({ kind: 'basic', front: 'Q', back: 'A' })
+  })
   it('continues one account streak across offline devices, deduplicates shared days and retains it after card deletion', async () => {
     clock = +new Date(2026, 9, 17, 12)
     vi.spyOn(Date, 'now').mockImplementation(() => clock)

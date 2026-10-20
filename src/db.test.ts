@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Rating } from 'ts-fsrs'
-import { deleteDeck, initialize, moveImage, OccludeDB, rateCard, refreshReviewQueue, removeImage, saveDeck, saveImage } from './db'
+import { deleteDeck, initialize, moveImage, OccludeDB, rateCard, refreshReviewQueue, removeImage, removeBasicCard, saveBasicCard, saveDeck, saveImage } from './db'
 import type { Asset, Rect } from './domain'
 
 let database: OccludeDB
@@ -209,5 +209,35 @@ describe('daily streak feedback', () => {
     expect(results.filter(Boolean)).toEqual([{ count: 1, active: true }])
     expect(await rateCard(a.id, Rating.Again, at, 'first', database)).toBeUndefined()
     expect(await database.reviews.count()).toBe(2)
+  })
+})
+
+describe('question-answer cards', () => {
+  it('saves, edits, moves and reopens a basic card without losing its schedule or history', async () => {
+    const id = await saveBasicCard(deck, '  Produktregel?  ', '$\\log_b(xy)=\\log_b(x)+\\log_b(y)$', undefined, database)
+    await rateCard(id, Rating.Good, Date.now(), 'basic-review', database)
+    const before = await database.cards.get(id)
+    const other = await saveDeck('Mathematik', null, undefined, database)
+    await saveBasicCard(other, 'Produktregel mit Voraussetzungen?', 'Für x,y>0 und b>0, b≠1 gilt die Produktregel.', id, database)
+    database.close(); await database.open()
+    expect(await database.cards.get(id)).toMatchObject({ kind: 'basic', deckId: other, front: 'Produktregel mit Voraussetzungen?', schedule: before!.schedule, createdAt: before!.createdAt })
+    expect(await database.reviews.count()).toBe(1)
+    expect(await database.images.count()).toBe(0)
+    expect(await database.assets.count()).toBe(0)
+    expect(await refreshReviewQueue([], deck, new Set(), new Date(), database)).toEqual([])
+    await deleteDeck(other, database)
+    expect(await database.cards.get(id)).toBeUndefined()
+  })
+  it('validates both faces and makes unchanged saves a no-op before creating any sync work', async () => {
+    for (const [front, back] of [['', 'answer'], ['question', ' '], ['x'.repeat(10001), 'answer']]) await expect(saveBasicCard(deck, front, back, undefined, database)).rejects.toThrow()
+    expect(await database.cards.count()).toBe(0)
+    const id = await saveBasicCard(deck, 'Q', 'A', undefined, database)
+    await database.syncMeta.put({ key: 'connection', value: { userId: 'owner', email: 'owner@example.test', locked: false } })
+    await saveBasicCard(deck, 'Q', 'A', id, database)
+    expect(await database.outbox.count()).toBe(0)
+    await saveBasicCard(deck, 'Q changed', 'A', id, database)
+    expect((await database.outbox.toArray())[0]).toMatchObject({ kind: 'basic.put', entityId: id })
+    await removeBasicCard(id, database)
+    expect((await database.outbox.orderBy('createdAt').toArray()).map(op => op.kind)).toEqual(['basic.put', 'basic.delete'])
   })
 })

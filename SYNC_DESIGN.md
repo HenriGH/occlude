@@ -111,6 +111,29 @@ after its card was deleted is accepted into history without restoring the card.
 
 ## Canonical scheduling
 
+Question-answer cards use the same card IDs, append-only review events and FSRS
+replay as image cards. Dexie v3 adds a deck index without changing old IDs/history.
+`basic.put/delete` commits locally with an outbox operation; it never sends a
+mutable schedule. Edits preserve learning history. Folder deletion tombstones
+both types and retains reviews. Newly due cards join the current round locally.
+
+Mixed-card clients request `occlude_snapshot_v2`, advertising `basic-cards`.
+Only a missing-RPC error falls back to the original snapshot. The old snapshot
+filters out basic cards and their reviews, preserving compatibility with old
+clients. Against an old backend, local basic cards and queued edits are retained
+until the migration is applied; they are not reconciled away.
+
+ChatGPT writes through authenticated MCP tools and dedicated atomic SQL functions,
+using a verified user JWT, never an elevated key. Supabase OAuth scopes establish
+identity, so restrictive RLS additionally denies OAuth clients normal library,
+Storage and sync-RPC access. A separate per-user/client capability, approved on
+the consent page, allows only folder listing and new folder/card creation.
+Revoking that capability blocks even an unexpired access token immediately.
+MCP batch UUIDs and payloads are logged atomically for safe retries. New cards
+appear through the existing background pull without an import or per-card
+approval in Occlude. Deployment/public listing remain separate operator steps;
+see [ChatGPT setup](docs/chatgpt/SETUP.md).
+
 Review events are append-only, deduplicated by ID, and sorted by `(reviewed_at UTC,
 event UUID)`. Equal timestamps use the UUID tie-breaker. Both concurrent answers
 survive. Every client replays the same canonical events from the original card
