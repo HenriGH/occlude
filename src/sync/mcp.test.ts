@@ -36,13 +36,49 @@ describe('public MCP protocol and input boundaries', () => {
       const create = list.tools.find(tool => tool.name === 'create_flashcards')!
       expect(create.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: true })
       expect(create._meta?.securitySchemes).toEqual([{ type: 'oauth2', scopes: ['email'] }])
+      expect(list.tools).toHaveLength(6)
+      for (const name of ['delete_flashcards', 'delete_folder']) expect(list.tools.find(tool => tool.name === name)?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: true })
       const requestId = crypto.randomUUID(), data = { created_count: 1, card_ids: [crypto.randomUUID()], deck_id: crypto.randomUUID(), deck_name: 'Mathematik' }
       rpc.mockResolvedValue({ data, error: null })
       const args = { request_id: requestId, deck_name: 'Mathematik', cards: [{ front: 'Wie lautet die Produktregel?', back: '$\\log_b(xy)=\\log_b(x)+\\log_b(y)$ für $x,y>0$, $b>0$, $b\\ne1$.' }] }
       const result = await client.callTool({ name: 'create_flashcards', arguments: args })
       expect(result.isError).not.toBe(true)
-      expect(result.structuredContent).toEqual({ ...data, app_url: configuration.appUrl })
+      expect(result.structuredContent).toEqual({ ...data, created_cards: [{ id: data.card_ids[0], version: 1 }], app_url: configuration.appUrl })
       expect(rpc).toHaveBeenCalledWith('occlude_mcp_create_cards', { p_request_id: requestId, p_deck_id: null, p_deck_name: 'Mathematik', p_cards: args.cards })
+    } finally { await client.close() }
+  })
+  it('routes targeted search, versioned deletion and folder previews through bounded dedicated RPCs', async () => {
+    const { handler, rpc } = fixture(), client = await clientFor(handler)
+    try {
+      const card = { id: crypto.randomUUID(), version: 2 }, folder = crypto.randomUUID(), request = crypto.randomUUID(), token = 'a'.repeat(64)
+      const cases = [
+        { name: 'list_flashcards', input: { deck_id: folder, query: 'Logarithmus' }, rpc: 'occlude_mcp_list_cards', args: { p_deck_id: folder, p_query: 'Logarithmus', p_after: null, p_limit: 50 }, result: { cards: [{ ...card, question: 'Q' }], next_after: null } },
+        { name: 'delete_flashcards', input: { request_id: request, cards: [card] }, rpc: 'occlude_mcp_delete_cards', args: { p_request_id: request, p_cards: [card] }, result: { deleted_count: 1, card_ids: [card.id] } },
+        { name: 'preview_folder_deletion', input: { folder_id: folder }, rpc: 'occlude_mcp_preview_folder_deletion', args: { p_deck_id: folder }, result: { snapshot_token: token, card_count: 1 } },
+        { name: 'delete_folder', input: { folder_id: folder, request_id: request, snapshot_token: token }, rpc: 'occlude_mcp_delete_folder', args: { p_request_id: request, p_deck_id: folder, p_snapshot_token: token }, result: { deleted_folder_count: 1, deleted_card_count: 1 } },
+      ]
+      for (const example of cases) {
+        rpc.mockResolvedValue({ data: example.result, error: null })
+        const result = await client.callTool({ name: example.name, arguments: example.input })
+        expect(result.isError).not.toBe(true)
+        expect(result.structuredContent).toEqual(example.result)
+        expect(rpc).toHaveBeenLastCalledWith(example.rpc, example.args)
+      }
+      rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'new consent required' } })
+      const denied = await client.callTool({ name: 'delete_flashcards', arguments: cases[1].input })
+      expect(denied.isError).toBe(true)
+      expect(denied._meta?.['mcp/www_authenticate']).toBeDefined()
+    } finally { await client.close() }
+  })
+  it('rejects guessed scope, duplicate cards, missing previews and forged deletion ownership before SQL', async () => {
+    const { handler, rpc } = fixture(), client = await clientFor(handler)
+    try {
+      const card = { id: crypto.randomUUID(), version: 1 }, request = crypto.randomUUID(), folder = crypto.randomUUID()
+      for (const input of [{ request_id: request, cards: [] }, { request_id: request, cards: [card, card] }, { request_id: request, cards: [{ id: card.id }] }, { request_id: request, cards: [card], user_id: crypto.randomUUID() }, { request_id: request, cards: Array.from({ length: 101 }, () => ({ id: crypto.randomUUID(), version: 1 })) }]) expect((await client.callTool({ name: 'delete_flashcards', arguments: input })).isError).toBe(true)
+      expect((await client.callTool({ name: 'delete_folder', arguments: { request_id: request, folder_id: folder } })).isError).toBe(true)
+      expect((await client.callTool({ name: 'delete_folder', arguments: { request_id: request, folder_id: folder, snapshot_token: 'a'.repeat(64), delete_all: true } })).isError).toBe(true)
+      expect((await client.callTool({ name: 'list_flashcards', arguments: { limit: 101 } })).isError).toBe(true)
+      expect(rpc).not.toHaveBeenCalled()
     } finally { await client.close() }
   })
   it('rejects forged ownership, malformed text, batches over 50 and unknown tools before calling SQL', async () => {

@@ -68,6 +68,51 @@ afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllGlobals(); for (const 
 afterAll(async () => { await pg?.close() })
 
 describe('local outbox + actual PostgreSQL RPC integration', () => {
+  it('propagates MCP card/folder deletions to two devices and accepts an offline review without resurrecting a card', async () => {
+    const a = await device(), b = await device()
+    await a.engine.connect('student@example.test'); await b.engine.connect('student@example.test')
+    const clientId = crypto.randomUUID()
+    await a.transport.query('select public.occlude_authorize_chatgpt_management($1,$2)', [clientId, 'ChatGPT'])
+    const oauth = new TestTransport(owner); oauth.oauthClient = clientId
+    const handler = createMcpHandler({ supabaseUrl: 'https://test.supabase.co', publishableKey: 'public', appUrl: 'https://occlude.example' }, async () => ({ userId: owner, clientId, rpc: async (name, args = {}) => {
+      const queries: Record<string, [string, unknown[]]> = {
+        occlude_mcp_create_cards: ['select public.occlude_mcp_create_cards($1,$2,$3,$4::jsonb) data', [args.p_request_id, args.p_deck_id, args.p_deck_name, JSON.stringify(args.p_cards)]],
+        occlude_mcp_delete_cards: ['select public.occlude_mcp_delete_cards($1,$2::jsonb) data', [args.p_request_id, JSON.stringify(args.p_cards)]],
+        occlude_mcp_preview_folder_deletion: ['select public.occlude_mcp_preview_folder_deletion($1) data', [args.p_deck_id]],
+        occlude_mcp_delete_folder: ['select public.occlude_mcp_delete_folder($1,$2,$3) data', [args.p_request_id, args.p_deck_id, args.p_snapshot_token]],
+      }
+      try { const [sql, values] = queries[name]; return { data: (await oauth.query<{ data: unknown }>(sql, values)).rows[0].data, error: null } }
+      catch (e) { return { data: null, error: { message: String(e) } } }
+    } }))
+    async function tool(name: string, args: object) {
+      const response = await handler(new Request('https://test.supabase.co/functions/v1/occlude-mcp/mcp', { method: 'POST', headers: { Authorization: 'Bearer fixture', 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-06-18' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) }))
+      const body = await response.json()
+      expect(body.result.isError).not.toBe(true)
+      return body.result.structuredContent
+    }
+    const saved = await tool('create_flashcards', { request_id: crypto.randomUUID(), deck_name: 'Temporary', cards: [{ front: 'First', back: 'A' }, { front: 'Second', back: 'A' }] })
+    await a.engine.sync(); await b.engine.sync()
+    const card = saved.created_cards[0]
+    b.transport.online = false
+    await rateCard(card.id, 3, clock, crypto.randomUUID(), b.db)
+    const deletion = { request_id: crypto.randomUUID(), cards: [card] }
+    expect(await tool('delete_flashcards', deletion)).toMatchObject({ deleted_count: 1 })
+    expect(await tool('delete_flashcards', deletion)).toMatchObject({ deleted_count: 1 })
+    await a.engine.sync()
+    expect(await a.db.cards.get(card.id)).toBeUndefined()
+    b.transport.online = true
+    await b.engine.sync(); await a.engine.sync()
+    for (const device of [a, b]) { expect(await device.db.cards.count()).toBe(1); expect(await device.db.reviews.count()).toBe(1) }
+    const preview = await tool('preview_folder_deletion', { folder_id: saved.deck_id })
+    expect(preview.card_count).toBe(1)
+    await tool('delete_folder', { request_id: crypto.randomUUID(), folder_id: saved.deck_id, snapshot_token: preview.snapshot_token })
+    await a.engine.sync(); await b.engine.sync()
+    for (const device of [a, b]) {
+      expect(await device.db.cards.count()).toBe(0)
+      expect(await device.db.decks.get(saved.deck_id)).toBeUndefined()
+      expect(await device.db.reviews.count()).toBe(1)
+    }
+  })
   it('creates cards through the actual MCP handler, automatically pulls them to two devices and preserves edits/reviews/deletion', async () => {
     const a = await device(), b = await device()
     await a.engine.connect('student@example.test'); await b.engine.connect('student@example.test')

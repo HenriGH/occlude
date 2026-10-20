@@ -1,5 +1,29 @@
 # Validation
 
+## Targeted ChatGPT deletion
+
+Validated on 2026-10-20: production build, all 111 unit/component/SQL/integration
+tests, 11 selected production-browser scenarios (consent and question-answer
+cards), Deno type-check and the expanded MCP runtime smoke test passed.
+
+The actual migration is tested against both an existing library/grant and a new
+database. Old grants retain creation-only access; explicit expanded consent is
+required for question search and deletion. SQL cases cover exactly undoing a
+27-card batch while preserving other cards, question pagination without answers,
+cross-account isolation, revocation, malformed/duplicate references, stale card
+versions, changed folder previews, whole-subtree deletion, retry deduplication,
+image-mask sibling preservation and stale offline image-editor rejection.
+Immutable reviews and original image bytes are retained.
+
+An actual MCP handler drives SQL creation/deletion and syncs two independent
+IndexedDB devices, including a review recorded offline before deletion and
+uploaded afterward without restoring the card. Browser fixtures verify expanded
+consent text, the new approval RPC, reconnect guidance for old connections and
+automatic removal of a cloud-tombstoned card from the visible library. Destructive
+MCP annotations and strict target/preview schemas are checked with the official
+MCP client. No live user data is deleted by tests; hosted migration, function/site
+deployment and explicit reconnection remain operator steps.
+
 ## OAuth responses without content
 
 On 2026-10-20, a production-preview Chromium test reproduced the connection

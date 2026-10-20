@@ -83,6 +83,12 @@ test('cloud-created question-answer cards appear through background sync with no
     await expect(page.getByRole('img', { name: /^Streak:/ })).toHaveAccessibleName(/0 Tage/)
     await page.getByRole('button', { name: 'Frage-Antwort-Karte bearbeiten: Die neue Karte aus ChatGPT' }).click()
     await expect(page.getByRole('textbox', { name: 'Antwort', exact: true })).toHaveValue('$\\log_b(1)=0$')
+    await page.getByRole('button', { name: 'Zur Übersicht', exact: true }).click()
+    const created = fixture.cloud.snapshot.cards.find((card: any) => card.front === 'Die neue Karte aus ChatGPT')
+    created.deleted_at = new Date().toISOString(); created.version++
+    await page.clock.fastForward(16000)
+    await expect(page.getByRole('button', { name: 'Frage-Antwort-Karte bearbeiten: Die neue Karte aus ChatGPT' })).toHaveCount(0)
+    expect((await localState(page)).cards).toBe(2)
   } finally { fixture.release() }
 })
 

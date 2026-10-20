@@ -13,7 +13,7 @@ for (const approve of [true, false]) {
       calls.push(route.request().postDataJSON().action)
       return route.fulfill({ headers, body: JSON.stringify({ redirect_url: `https://chatgpt.com/connector_platform/oauth/callback?${approve ? 'code=fixture' : 'error=access_denied'}&state=fixture` }) })
     })
-    await page.route('**/rest/v1/rpc/occlude_authorize_chatgpt', async route => {
+    await page.route('**/rest/v1/rpc/occlude_authorize_chatgpt_management', async route => {
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
       expect(route.request().postDataJSON()).toEqual({ p_client_id: clientId, p_client_name: 'ChatGPT' })
       calls.push('capability')
@@ -27,6 +27,8 @@ for (const approve of [true, false]) {
       await page.getByRole('textbox', { name: 'Code aus der E-Mail', exact: true }).fill('123456')
       await page.getByRole('button', { name: 'Mit Code anmelden', exact: true }).click()
       await expect(page.getByText('Neue Ordner und Frage-Antwort-Karten erstellen')).toBeVisible()
+      await expect(page.getByText('Ordnernamen und Kartenfragen lesen')).toBeVisible()
+      await expect(page.getByText('Auf deinen Auftrag Karten und Ordner samt Inhalt löschen')).toBeVisible()
       expect(calls).toEqual([])
       await page.getByRole('button', { name: approve ? 'Verbinden' : 'Ablehnen', exact: true }).click()
       await expect(page.getByRole('heading', { name: 'Zurück in ChatGPT' })).toBeVisible()
@@ -46,7 +48,7 @@ for (const failure of [{ status: 403, code: '42501', text: 'Berechtigung' }, { s
       if (route.request().method() === 'POST') { approvals++; return route.abort() }
       return route.fulfill({ headers, body: JSON.stringify({ authorization_id: 'authorization-fixture', redirect_uri: 'https://chatgpt.com/connector_platform/oauth/callback', client: { id: '00000000-0000-4000-8000-000000000099', name: 'ChatGPT' }, user: { id: '00000000-0000-4000-8000-000000000003' }, scope: 'email' }) })
     })
-    await page.route('**/rest/v1/rpc/occlude_authorize_chatgpt', route => {
+    await page.route('**/rest/v1/rpc/occlude_authorize_chatgpt_management', route => {
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
       if (!failure.status) return route.abort()
       return route.fulfill({ status: failure.status, headers, body: JSON.stringify({ code: failure.code, message: 'private-token-in-url', details: 'private SQL statement', hint: '' }) })
@@ -88,6 +90,7 @@ test('disconnect immediately revokes the data capability and then the OAuth gran
   try {
     fixture.cloud.snapshot = await seedWorkspace(page, false)
     await expect(page.getByRole('button', { name: 'Trennen', exact: true })).toBeVisible()
+    await expect(page.getByText('Zum Löschen erst trennen und in ChatGPT neu verbinden.')).toBeVisible()
     page.once('dialog', dialog => dialog.accept())
     await page.getByRole('button', { name: 'Trennen', exact: true }).click()
     await expect(page.getByText('Keine Anwendung verbunden.')).toBeVisible()

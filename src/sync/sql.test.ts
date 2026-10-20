@@ -46,6 +46,130 @@ beforeEach(async () => {
 })
 afterAll(async () => { await pg?.close() })
 
+describe('ChatGPT deletion capabilities', () => {
+  async function access(manage = true) {
+    const client = id()
+    await pg.query('select public.occlude_authorize_chatgpt($1,$2)', [client, 'ChatGPT'])
+    if (manage) await pg.query('select public.occlude_authorize_chatgpt_management($1,$2)', [client, 'ChatGPT'])
+    await asUser(userA, client)
+    return client
+  }
+  const create = async (folder: string, count = 1) => (await pg.query<{ data: any }>('select public.occlude_mcp_create_cards($1,$2,null,$3::jsonb) data', [id(), folder, JSON.stringify(Array.from({ length: count }, (_, i) => ({ front: `Batch question ${i}`, back: 'PRIVATE ANSWER' })))])).rows[0].data
+  const remove = async (request: string, cards: unknown[]) => (await pg.query<{ data: any }>('select public.occlude_mcp_delete_cards($1,$2::jsonb) data', [request, JSON.stringify(cards)])).rows[0].data
+  const preview = async (folder: string) => (await pg.query<{ data: any }>('select public.occlude_mcp_preview_folder_deletion($1) data', [folder])).rows[0].data
+  const removeFolder = async (request: string, folder: string, token: string) => (await pg.query<{ data: any }>('select public.occlude_mcp_delete_folder($1,$2,$3) data', [request, folder, token])).rows[0].data
+
+  it('keeps existing creation grants restricted until explicit new consent and blocks direct/foreign/revoked access', async () => {
+    const folder = await deck(), client = await access(false)
+    const saved = await create(folder)
+    await expect(remove(id(), [{ id: saved.card_ids[0], version: 1 }])).rejects.toThrow(/new consent/)
+    await expect(preview(folder)).rejects.toThrow(/new consent/)
+    await expect(pg.query('select public.occlude_mcp_list_cards(null,null,null,50)')).rejects.toThrow(/new consent/)
+    await expect(pg.query('select public.occlude_authorize_chatgpt_management($1,$2)', [client, 'ChatGPT'])).rejects.toThrow(/direct user/)
+    await expect(pg.query('select public.occlude_mcp_folder_state($1,$2)', [userA, folder])).rejects.toThrow(/permission denied/)
+    await asUser(userA)
+    await pg.query('select public.occlude_authorize_chatgpt_management($1,$2)', [client, 'ChatGPT'])
+    expect((await pg.query<{ data: any }>('select public.occlude_chatgpt_connections() data')).rows[0].data).toContainEqual(expect.objectContaining({ client_id: client, can_manage: true }))
+    await expect(preview(folder)).rejects.toThrow(/not authorized/)
+    await asUser(userB)
+    const foreign = await deck('Foreign')
+    await pg.query('select public.occlude_authorize_chatgpt_management($1,$2)', [client, 'ChatGPT'])
+    await asUser(userB, client)
+    await expect(remove(id(), [{ id: saved.card_ids[0], version: 1 }])).rejects.toThrow(/missing or unavailable/)
+    await expect(preview(folder)).rejects.toThrow(/missing or unavailable/)
+    await asUser(userA, client)
+    await expect(preview(foreign)).rejects.toThrow(/missing or unavailable/)
+    await expect(remove(id(), [{ id: id(), version: 1 }])).rejects.toThrow(/missing or unavailable/)
+    expect((await pg.query('select * from public.cards')).rows).toHaveLength(0)
+    await asUser(userA)
+    await pg.query('select public.occlude_revoke_chatgpt($1)', [client])
+    await asUser(userA, client)
+    await expect(remove(id(), [{ id: saved.card_ids[0], version: 1 }])).rejects.toThrow(/revoked/)
+    await pg.exec('reset role; set role anon')
+    await expect(preview(folder)).rejects.toThrow(/permission denied/)
+  })
+  it('undoes exactly a 27-card batch, paginates questions without answers, and safely deduplicates deletions', async () => {
+    const folder = await deck(), client = await access(), saved = await create(folder, 27)
+    const extra = await create(folder)
+    const listed: string[] = []
+    let after: string | null = null
+    do {
+      const page: { cards: { id: string }[]; next_after: string | null } = (await pg.query<{ data: any }>('select public.occlude_mcp_list_cards($1,$2,$3,10) data', [folder, 'Batch question', after])).rows[0].data
+      expect(JSON.stringify(page)).not.toContain('PRIVATE ANSWER')
+      listed.push(...page.cards.map((c: any) => c.id)); after = page.next_after
+    } while (after)
+    expect(new Set(listed).size).toBe(28)
+    const request = id(), cards = saved.card_ids.map((id: string) => ({ id, version: 1 }))
+    const result = await remove(request, cards)
+    expect(result).toMatchObject({ deleted_count: 27, already_deleted_count: 0 })
+    expect(await remove(request, cards)).toEqual(result)
+    expect(await remove(id(), cards)).toMatchObject({ deleted_count: 0, already_deleted_count: 27 })
+    await expect(remove(request, [{ id: extra.card_ids[0], version: 1 }])).rejects.toThrow(/reused/)
+    await asUser(userA)
+    const live = (await pg.query<{ id: string }>('select id from public.cards where deleted_at is null')).rows
+    expect(live.map(row => row.id)).toEqual([extra.card_ids[0]])
+    await asUser(userB, client)
+    await expect(remove(id(), cards)).rejects.toThrow(/not authorized/)
+  })
+  it('rejects whole batches on stale versions, forged ownership, duplicates or unavailable cards', async () => {
+    const folder = await deck(), client = await access(), saved = await create(folder, 2)
+    await asUser(userA)
+    const edited = saved.card_ids[1]
+    await apply(operation('basic.put', edited, { id: edited, kind: 'basic', deckId: folder, front: 'User edited', back: 'Answer', createdAt: now }, 1))
+    await asUser(userA, client)
+    const first = { id: saved.card_ids[0], version: 1 }
+    for (const refs of [[first, { id: edited, version: 1 }], [first, { id: id(), version: 1 }], [first, first], [{ ...first, user_id: userB }], [{ ...first, version: null }], [{ ...first, version: 1.5 }], []]) await expect(remove(id(), refs)).rejects.toThrow()
+    await asUser(userA)
+    expect((await pg.query('select id from public.cards where deleted_at is null')).rows).toHaveLength(2)
+    await asUser(userA, client)
+    expect(await remove(id(), [first, { id: edited, version: 2 }])).toMatchObject({ deleted_count: 2 })
+  })
+  it('deletes an image mask without changing siblings or reviews and conflicts with an offline image edit', async () => {
+    const folder = await deck(), original = await image(folder), review = id()
+    await apply(operation('review.add', review, { id: review, cardId: original.cardId, rating: 3, reviewedAt: now, schedulerVersion: SCHEDULER_VERSION }))
+    const sibling = id(), region = id()
+    const payload = { ...original.payload, regions: [...original.payload.regions, { id: region, imageId: original.imageId, x: .5, y: .5, width: .1, height: .1 }], cards: [...original.payload.cards, { id: sibling, imageId: original.imageId, regionId: region, createdAt: now }] }
+    await apply(operation('image.put', original.imageId, payload, 1))
+    await access()
+    expect(await remove(id(), [{ id: original.cardId, version: 1 }])).toMatchObject({ deleted_count: 1 })
+    await asUser(userA)
+    const state = await snapshot()
+    expect(state.cards.find(c => c.id === sibling)?.deleted_at).toBeNull()
+    expect(state.cards.find(c => c.id === original.cardId)?.deleted_at).toBeTruthy()
+    expect(state.regions.find(r => r.id === original.regionId)?.deleted_at).toBeTruthy()
+    expect(state.images[0].deleted_at).toBeNull()
+    expect(state.reviews).toHaveLength(1)
+    await expect(apply(operation('image.put', original.imageId, payload, 2))).rejects.toThrow(/conflict:image/)
+    const lateReview = id()
+    await apply(operation('review.add', lateReview, { id: lateReview, cardId: original.cardId, rating: 3, reviewedAt: now + 1000, schedulerVersion: SCHEDULER_VERSION }))
+    expect((await snapshot()).reviews).toHaveLength(2)
+  })
+  it('previews whole folder scope, refuses changes since preview and retains unrelated folders/history on retry', async () => {
+    const root = await deck('Root'), child = await deck('Child', root), outside = await deck('Outside')
+    const original = await image(child), review = id()
+    await apply(operation('review.add', review, { id: review, cardId: original.cardId, rating: 3, reviewedAt: now, schedulerVersion: SCHEDULER_VERSION }))
+    const client = await access()
+    await create(child, 2); await create(outside)
+    const initial = await preview(root)
+    expect(initial).toMatchObject({ name: 'Root', folder_count: 2, image_count: 1, card_count: 3 })
+    expect(initial.folder_ids).toBeUndefined()
+    const newer = await create(child)
+    await expect(removeFolder(id(), root, initial.snapshot_token)).rejects.toThrow(/folder changed/)
+    const fresh = await preview(root), request = id()
+    const result = await removeFolder(request, root, fresh.snapshot_token)
+    expect(result).toMatchObject({ deleted_folder_count: 2, deleted_card_count: 4, deleted_image_count: 1 })
+    expect(await removeFolder(request, root, fresh.snapshot_token)).toEqual(result)
+    await expect(removeFolder(request, outside, fresh.snapshot_token)).rejects.toThrow(/reused/)
+    await asUser(userA)
+    expect((await pg.query('select id from public.decks where deleted_at is null')).rows).toEqual([{ id: outside }])
+    expect((await pg.query('select id from public.cards where deleted_at is null')).rows).toHaveLength(1)
+    expect((await pg.query('select * from public.review_events where id=$1', [review])).rows).toHaveLength(1)
+    await expect(apply(operation('basic.put', newer.card_ids[0], { id: newer.card_ids[0], kind: 'basic', deckId: child, front: 'Stale', back: 'Edit', createdAt: now }, 1))).rejects.toThrow(/conflict/)
+    await asUser(userA, client)
+    await expect(removeFolder(id(), root, fresh.snapshot_token)).rejects.toThrow(/missing/)
+  })
+})
+
 describe('PostgreSQL migration and tenant security', () => {
   it('upgrades an existing database without losing cards or immutable review events', async () => {
     const legacy = await sqlBackend({ through: '202610170001_initial_sync.sql' })
@@ -63,7 +187,13 @@ describe('PostgreSQL migration and tenant security', () => {
       await legacy.exec('reset role')
       await legacy.exec(await readFile('supabase/migrations/202610170002_mask_labels.sql', 'utf8'))
       await legacy.exec(await readFile('supabase/migrations/202610200001_basic_cards_chatgpt.sql', 'utf8'))
+      const client = id()
       await legacy.exec('set role authenticated')
+      await legacy.query('select public.occlude_authorize_chatgpt($1,$2)', [client, 'Existing ChatGPT'])
+      await legacy.exec('reset role')
+      await legacy.exec(await readFile('supabase/migrations/202610200002_chatgpt_deletion.sql', 'utf8'))
+      await legacy.exec('set role authenticated')
+      expect((await legacy.query<{ data: any }>('select public.occlude_chatgpt_connections() data')).rows[0].data).toContainEqual(expect.objectContaining({ client_id: client, can_manage: false }))
       const state = (await legacy.query<{ data: any }>('select public.occlude_snapshot() data')).rows[0].data
       expect(state.features).toContain('region-labels')
       expect(state.regions).toEqual([expect.objectContaining({ id: region, label: '' })])
@@ -71,7 +201,7 @@ describe('PostgreSQL migration and tenant security', () => {
       expect(state.reviews).toEqual([expect.objectContaining({ id: review, rating: 3 })])
       expect(state.decks[0].name).toBe('Bestehender Ordner')
     } finally { await legacy.close() }
-  })
+  }, 30000)
   it('stores questions, preserves them for old clients, validates edits atomically and clears them explicitly', async () => {
     const { payload, imageId, cardId, regionId } = await image(await deck())
     const labelled = { ...payload, regions: [{ ...payload.regions[0], label: 'Welche Struktur?' }] }

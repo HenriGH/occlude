@@ -28,8 +28,13 @@ schedule. Formulas use `$...$` or `$$...$$`; HTML is treated as text.
 
 An authenticated MCP integration lets ChatGPT save new cards directly into an
 Occlude account after one-time connection. No model API key or manual import is
-needed. The implementation is tested locally; the public ChatGPT app still needs
-the hosted migration/function, OAuth setup and OpenAI's submission/review process.
+needed. With explicit expanded consent it can find questions and delete selected
+cards or whole folders on the user's request. Version checks and folder previews
+protect against deleting content changed since selection. Existing connections
+keep creation-only access until disconnected in Occlude and explicitly reconnected.
+Apply `202610200002_chatgpt_deletion.sql` and redeploy both the site and MCP function
+for this update. The user reports the live creation flow works. A public directory
+listing still requires the operator's submission and OpenAI's review process.
 Follow [the deployment guide](docs/chatgpt/SETUP.md), with
 [submission notes](docs/chatgpt/SUBMISSION.md) and a
 [privacy draft](docs/chatgpt/PRIVACY-DRAFT.md) that needs operator details before

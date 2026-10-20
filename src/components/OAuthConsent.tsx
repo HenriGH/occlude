@@ -45,7 +45,7 @@ export function OAuthConsent() {
     setBusy(true); setError('')
     try {
       if (approve) {
-        const { error, status } = await supabase.rpc('occlude_authorize_chatgpt', { p_client_id: details.client.id, p_client_name: details.client.name.slice(0, 120) })
+        const { error, status } = await supabase.rpc('occlude_authorize_chatgpt_management', { p_client_id: details.client.id, p_client_name: details.client.name.slice(0, 120) })
         if (error) throw new Error(chatgptAccessFeedback(error, status))
       }
       const { data, error } = approve ? await supabase.auth.oauth.approveAuthorization(authorizationId, { skipBrowserRedirect: true }) : await supabase.auth.oauth.denyAuthorization(authorizationId, { skipBrowserRedirect: true })
@@ -58,8 +58,8 @@ export function OAuthConsent() {
     <h1>Mit Occlude verbinden</h1>
     {!supabase ? <p role="alert">{configurationError || 'Cloud-Verbindung nicht eingerichtet.'}</p> : !ready ? <p role="status">Anmeldung wird geladen …</p> : !session ? <><p>Melde dich mit deinem Occlude-Konto an.</p><EmailSignIn auth={supabase.auth} projectUrl={configuration!.url} redirectPath={`/oauth/consent?authorization_id=${encodeURIComponent(authorizationId)}`} /></> : details ? <>
       <p><strong>{details.client.name}</strong> möchte sich mit <strong>{session.user.email}</strong> verbinden.</p>
-      <ul><li>Ordnernamen lesen</li><li>Neue Ordner und Frage-Antwort-Karten erstellen</li></ul>
-      <p className="muted small">Bestehende Karten, Bilder und Lernverläufe werden nicht freigegeben. Du kannst den Zugriff in den Occlude-Einstellungen widerrufen.</p>
+      <ul><li>Ordnernamen und Kartenfragen lesen</li><li>Neue Ordner und Frage-Antwort-Karten erstellen</li><li>Auf deinen Auftrag Karten und Ordner samt Inhalt löschen</li></ul>
+      <p className="muted small">Antworten, Bildinhalte und Lernverläufe werden nicht freigegeben. Du kannst den Zugriff in den Occlude-Einstellungen widerrufen.</p>
       <p className="oauth-details">Anwendung: {new URL(details.redirect_uri).origin}<br />Angefragte Anmeldedaten: {details.scope || 'E-Mail'}</p>
       <div className="oauth-actions"><button className="button subtle" disabled={busy} onClick={() => void decide(false)}><X size={17} />Ablehnen</button><button className="button primary" disabled={busy} onClick={() => void decide(true)}><Check size={17} />{busy ? 'Wird verbunden …' : 'Verbinden'}</button></div>
     </> : !error ? <p role="status">Verbindungsanfrage wird geladen …</p> : null}

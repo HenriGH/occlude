@@ -18,17 +18,21 @@ entsprechend ihrer tatsächlichen Konfiguration verarbeiten.
 Bei der Verbindung meldest du dich an deinem Occlude-Konto an und erlaubst einer
 angezeigten Anwendung den Zugriff. Supabase verwaltet OAuth-Anmeldung und Tokens.
 Occlude speichert dazu die zugehörige Nutzer-ID, OAuth-Client-ID, den angezeigten
-Anwendungsnamen und den Freigabezeitpunkt.
+Anwendungsnamen, den Freigabezeitpunkt und die erteilte Verwaltungsberechtigung.
 
 Nach deiner Freigabe darf die Anbindung deine Ordnernamen und Hierarchie abfragen
 sowie neue Ordner und Frage-Antwort-Karten erstellen. Dafür werden die von ChatGPT
 übermittelten Fragen und Antworten in deinem Konto gespeichert. Die Anfrage-ID
 und der Inhalt werden für zuverlässige, doppelfreie Wiederholungen protokolliert.
-Vorhandene Karteninhalte, Bilder und Lernverläufe werden dieser Anbindung nicht
-freigegeben. Zugriff auf andere Konten ist nicht möglich.
+Mit ausdrücklich erweiterter Freigabe kann ChatGPT zusätzlich Kartenfragen und
+Maskenbeschriftungen samt IDs/Versionen abfragen und auf deinen Auftrag einzelne
+Karten sowie Ordner mit ihren Unterordnern und Inhalten löschen. Antworten,
+Bildinhalte und Lernverläufe werden nicht abgerufen. Alte Freigaben erhalten diese
+zusätzlichen Rechte erst nach erneuter ausdrücklicher Zustimmung.
+Zugriff auf andere Konten ist nicht möglich.
 
 ChatGPT verarbeitet deine dortigen Eingaben, erzeugte Karten und die über das Tool
-abgerufenen Ordnernamen nach den für dein OpenAI-Konto geltenden Bedingungen.
+abgerufenen Ordnernamen beziehungsweise Kartenfragen nach den für dein OpenAI-Konto geltenden Bedingungen.
 Occlude erhält weder dein ChatGPT-Passwort noch einen persönlichen OpenAI-API-Key.
 Occlude führt für diese Funktion selbst keine Modell-API-Anfragen aus.
 
@@ -36,7 +40,7 @@ Occlude führt für diese Funktion selbst keine Modell-API-Anfragen aus.
 
 Unter Einstellungen → ChatGPT kannst du den Zugriff entziehen. Dies blockiert neue
 Datenoperationen sofort und widerruft zusätzlich die OAuth-Freigabe. Bereits
-angelegte Karten bleiben erhalten und können in Occlude gelöscht werden. Ein
+angelegte Karten bleiben erhalten, sofern sie nicht separat gelöscht wurden. Ein
 Widerruf löscht keine bereits bei ChatGPT gespeicherten Unterhaltungen.
 
 Synchronisierte Löschungen verwenden derzeit Tombstones. Referenzierte Bilder,

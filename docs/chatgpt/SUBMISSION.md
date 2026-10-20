@@ -26,20 +26,31 @@ Die Karten erscheinen automatisch auf deinen verbundenen Geräten und verwenden
 dieselbe Lernplanung und tägliche Streak wie selbst erstellte Karten. Mathematische
 Formeln werden unterstützt. In Occlude kannst du zusätzlich Bildkarten mit
 verdeckten Bereichen sowie normale Karten selbst erstellen und bearbeiten.
+Auf ausdrücklichen Auftrag können ausgewählte Karten oder ganze Ordner samt
+Inhalt gelöscht werden. Vor Ordnerlöschungen wird der Umfang geprüft.
 
 ## Beispielanfragen
 
 - Erstelle acht Karten zu den Logarithmusregeln und speichere sie in Occlude im Ordner Mathematik.
 - Zeige mir meine Occlude-Ordner und speichere fünf Frage-Antwort-Karten zu Enzymkinetik im passenden Ordner.
 - Erstelle drei Karten zum Basiswechsel bei Logarithmen, jeweils mit Voraussetzungen und einem Rechenbeispiel, und speichere sie in Occlude.
+- Lösche genau die 27 Karten wieder, die du gerade erstellt hast; andere Karten sollen bleiben.
 
 ## Fähigkeiten und Grenzen
 
 - `list_folders` liest ausschließlich Namen, IDs und Hierarchie der eigenen Ordner.
 - `create_flashcards` erstellt bis zu 50 neue Karten pro Aufruf. Neue Ordner sind möglich.
-- Schreibendes Tool: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`.
-- Keine Möglichkeit, vorhandene Karten, Bilder, Antworten oder Lernverläufe zu lesen,
-  zu verändern oder zu löschen. Kein Zugriff auf andere Konten.
+- `list_flashcards` findet Karten anhand von Fragen/Maskenbeschriftungen, paginiert
+  mit IDs/Versionen. Antworten, Bildinhalte und Lernverläufe bleiben unzugänglich.
+- `delete_flashcards` löscht bis zu 100 explizite Karten-IDs mit Versionsprüfung.
+- `preview_folder_deletion` prüft den kompletten Ordner-Unterbaum mit Inhalt.
+  `delete_folder` erfordert den dazu passenden, weiterhin gültigen Snapshot-Token.
+- Erstellung: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`.
+  Löschungen: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`.
+- Löschungen benötigen expliziten Nutzerauftrag und die erweiterte Kontofreigabe;
+  keine automatische Rechteerweiterung alter Verbindungen. Kein Zugriff auf andere Konten.
+- Bewertungsereignisse werden bei Löschungen erhalten; es gibt keine vollständige
+  physische Datenbereinigung oder automatische Wiederherstellung über ChatGPT.
 - Karten werden erst nach erfolgreichem Datenbank-Commit als gespeichert gemeldet.
 - Wiederholungen nutzen dieselbe Anfrage-ID; kein doppelter Import.
 - Keine externen Modell-API-Aufrufe, kein API-Key des Nutzers und kein Copy/Paste-Import.

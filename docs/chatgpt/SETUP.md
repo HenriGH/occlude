@@ -5,6 +5,50 @@ veröffentlicht. Dafür sind die folgenden einmaligen Betreiber-Schritte und die
 anschließende Prüfung durch OpenAI nötig. Normale Nutzer müssen später keine SQL-
 Dateien ausführen, Dateien importieren oder API-Schlüssel eingeben.
 
+## Update einer bereits funktionierenden Verbindung: Löschen ergänzen
+
+Diese Schritte einmal als Betreiber ausführen. Die vorhandenen OAuth-Adressen
+und die Site URL bleiben gültig.
+
+1. Auf Ubuntu den aktuellen Code holen:
+
+   ```sh
+   cd ~/occlude
+   git pull --ff-only
+   ```
+
+2. In Supabase **SQL Editor → New query** den gesamten Inhalt von
+   `supabase/migrations/202610200002_chatgpt_deletion.sql` einfügen und **Run**
+   drücken. Nur diese neue Migration ausführen, wenn die bisherigen schon
+   angewendet sind. Sie ergänzt Löschfunktionen und die erweiterte Freigabe.
+3. Website und MCP-Funktion mit dem aktualisierten Code veröffentlichen:
+
+   ```sh
+   npm run build
+   npx wrangler deploy
+   npx supabase functions deploy occlude-mcp --project-ref kinorxhnmqmwytxjcbbe
+   ```
+
+   Falls Supabase eine Betreiber-Anmeldung verlangt, einmal `npx supabase login`
+   ausführen und danach den Deploy-Befehl wiederholen.
+4. In **Occlude → Einstellungen → ChatGPT → Trennen** die bisherige Verbindung
+   lösen. Danach in ChatGPT neu verbinden und die erweiterten Rechte bestätigen.
+   Nur erneut „Connect“ zu drücken genügt bei einer alten Freigabe nicht unbedingt:
+   Supabase kann diese automatisch wiederverwenden. Die alte Datenbank-Freigabe
+   erhält ausdrücklich keine Löschrechte durch das Update allein.
+
+Neue Werkzeuge: `list_flashcards`, `delete_flashcards`,
+`preview_folder_deletion`, `delete_folder`. Die Löschwerkzeuge sind als destruktiv
+gekennzeichnet; ChatGPT kann eine Bestätigung verlangen. Falls ChatGPT noch eine
+alte Werkzeugliste zeigt, die App-Konfiguration dort aktualisieren/neu verbinden.
+
+„Lösch die gerade erstellten 27 Karten wieder“ verwendet exakt die IDs und Versionen
+aus der Erstellung. Andere Karten können anhand ihrer Fragen/Maskenbeschriftungen
+gefunden werden. Geänderte Karten werden nicht mit einer veralteten Version gelöscht.
+Ordnerlöschungen erfordern eine aktuelle Vorschau des gesamten Unterbaums; neue
+oder geänderte Inhalte machen die Vorschau ungültig. Bewertungsereignisse und
+Originalbilder bleiben entsprechend der bestehenden Aufbewahrung erhalten.
+
 ## Gewünschter Ablauf
 
 1. Nutzer verbindet die öffentliche Occlude-App in ChatGPT.
@@ -22,12 +66,30 @@ Es wird kein OpenAI-API-Key benötigt und keine separate OpenAI-API-Anfrage von
 Occlude aus ausgeführt. Verfügbare ChatGPT-Funktionen hängen vom Konto und den
 aktuellen Freigaben von OpenAI ab.
 
+### Kostenverteilung
+
+Occlude sendet keine Modell-Anfragen mit einem OpenAI-API-Key des Betreibers.
+Generierung und Tool-Nutzung erfolgen innerhalb der ChatGPT-Nutzung des jeweiligen
+Nutzers. Die Veröffentlichung dieser Anbindung erzeugt deshalb keinen eigenen
+Modell-API-Tokenverbrauch beim Betreiber. Supabase-/Hosting-Kontingente bleiben
+davon unabhängig.
+
+Ein Zahlungsdialog bei der Registrierung/Verifizierung des Entwicklerkontos ist
+getrennt davon zu beurteilen: „Buy credits“ bezeichnet einen Guthabenkauf, während
+eine Zahlungsdatenabfrage allein weder den genauen Verifizierungszweck noch eine
+Gebühr belegt. Aktuelle Verifizierungs-/Veröffentlichungsbedingungen im konkreten
+OpenAI-Dialog prüfen; hier wird keine gebührenfreie Verifizierung zugesichert.
+Falls später eine eigene OpenAI-API-Generierung eingebaut wird, wird diese separat
+nach dem dort verwendeten API-Projekt abgerechnet.
+
 ## 1. Einmaliges Datenbank-Update
 
 Im bestehenden Supabase-Projekt **SQL Editor → New query** öffnen und den gesamten
 Inhalt von `supabase/migrations/202610200001_basic_cards_chatgpt.sql` einmal ausführen.
 Die beiden älteren Migrationen müssen bereits angewendet sein und dürfen auf dem
 bestehenden Projekt nicht erneut ausgeführt werden.
+Anschließend `202610200002_chatgpt_deletion.sql` einmal ausführen. Bei einer schon
+funktionierenden Verbindung genügt ausschließlich dieses neue Update wie oben.
 
 Das Update ergänzt normale Karten, eine eng begrenzte OAuth-Freigabe und passende
 RPCs. Vorhandene Bildkarten und Bewertungen bleiben erhalten. Alte App-Versionen
@@ -63,7 +125,10 @@ Die OAuth-Identität verwendet den standardisierten Scope `email`. Dieser Scope
 begrenzt bei Supabase **nicht** den Datenbankzugriff. Deshalb sperrt die Migration
 OAuth-Clients für die normalen Tabellen, Storage und vollständigen Sync-RPCs.
 Nur die ausdrücklich freigegebenen MCP-Funktionen dürfen Ordnernamen lesen und
-neue Ordner/Karten anlegen. Ein Widerruf in den Einstellungen sperrt sofort diese
+neue Ordner/Karten anlegen. Mit neuer expliziter Verwaltungsfreigabe kommen
+Kartenfragen lesen sowie gezielte Karten-/Ordnerlöschungen hinzu. Antworten,
+Bildinhalte und Lernverläufe werden nicht über MCP herausgegeben.
+Ein Widerruf in den Einstellungen sperrt sofort diese
 Datenbankfreigabe und widerruft zusätzlich den Supabase-OAuth-Grant.
 
 Supabase empfiehlt asymmetrische JWT-Schlüssel (ES256/RS256); die SDK-Verifikation
@@ -138,6 +203,12 @@ Es wird dadurch noch keine öffentliche App veröffentlicht.
 - Unter **Einstellungen → ChatGPT** trennen; weitere Tool-Aufrufe müssen abgewiesen
   werden, auch solange ein vorheriges Access Token noch nicht abgelaufen ist.
 - Neu verbinden, Cloud-Seite neu laden und einen zweiten Auftrag ausführen.
+- Eine erstellte Kartenmenge gezielt rückgängig machen: andere Karten desselben
+  Ordners müssen bleiben. Dieselbe Löschanfrage erneut senden: keine weitere Wirkung.
+- Einen Ordner mit Unterordnern prüfen und löschen; zwischen Vorschau und Löschung
+  eine Karte hinzufügen: die alte Vorschau muss abgewiesen werden.
+- Eine alte Freigabe darf weiter erstellen, aber weder Kartenfragen abfragen noch
+  löschen, bis der Nutzer getrennt und die neuen Rechte explizit genehmigt hat.
 
 Lokal geprüft werden diese Abläufe mit echten PostgreSQL-RPCs und getrennten
 Geräte-Datenbanken sowie Browser-Fixtures. Eine erfolgreiche OpenAI-Verzeichnis-

@@ -129,6 +129,14 @@ identity, so restrictive RLS additionally denies OAuth clients normal library,
 Storage and sync-RPC access. A separate per-user/client capability, approved on
 the consent page, allows only folder listing and new folder/card creation.
 Revoking that capability blocks even an unexpired access token immediately.
+An additional `can_manage` capability, false for existing grants until new consent,
+allows question/label lookup and targeted deletions. Answers, image bytes and
+review history stay private. Card deletions require exact IDs/versions; image-card
+deletion also tombstones the mask and bumps the image version to reject stale
+offline editors. Whole-folder deletion compares a fresh subtree snapshot digest,
+including descendant metadata, then tombstones all contents atomically. Concurrent
+changes invalidate the preview. Reviews remain append-only, including offline
+reviews arriving after deletion. Physical asset/history purging remains separate.
 MCP batch UUIDs and payloads are logged atomically for safe retries. New cards
 appear through the existing background pull without an import or per-card
 approval in Occlude. Deployment/public listing remain separate operator steps;
