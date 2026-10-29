@@ -5,6 +5,57 @@ veröffentlicht. Dafür sind die folgenden einmaligen Betreiber-Schritte und die
 anschließende Prüfung durch OpenAI nötig. Normale Nutzer müssen später keine SQL-
 Dateien ausführen, Dateien importieren oder API-Schlüssel eingeben.
 
+## Aktuelles Update: SVG-Grafiken und Lernen per Tastatur
+
+Für eine bereits funktionierende Occlude-Installation:
+
+1. Auf dem Laptop im Terminal:
+
+   ```sh
+   cd ~/occlude
+   git pull --ff-only
+   npm ci
+   ```
+
+2. In **Supabase → SQL Editor → New query** den **gesamten Inhalt** von
+   `supabase/migrations/202610290001_card_svg.sql` einfügen. Die Datei beginnt mit
+   Kommentaren und `begin;` und endet mit `commit;`. Keinen einzelnen Ausschnitt
+   markieren; **Run** ausführen. Nur diese neue Migration ausführen, wenn die vier
+   älteren bereits erfolgreich angewendet wurden.
+3. Im Terminal Website und ChatGPT-Funktion aktualisieren:
+
+   ```sh
+   npm run build
+   npx wrangler deploy
+   npx supabase functions deploy occlude-mcp --project-ref kinorxhnmqmwytxjcbbe
+   ```
+
+4. Die Werkzeugdefinitionen der Occlude-App in ChatGPT aktualisieren, falls dort
+   noch die alte Version erscheint. Es gibt keine neuen Kontoberechtigungen;
+   eine erneute Occlude-Freigabe ist für Grafiken nicht nötig.
+
+Danach beispielsweise: „Erstelle eine Karte zur Logarithmusfunktion mit einer
+SVG-Grafik auf der Frage und einem beschrifteten Diagramm auf der Antwort.“
+`create_flashcards` akzeptiert optional `front_svg` und `back_svg` pro Karte,
+jeweils bis 100.000 Zeichen. ChatGPT muss das SVG selbst übermitteln; interne
+ChatGPT-Canvas-Artefakte oder private Bildlinks werden nicht automatisch ausgelesen.
+Die Grafik muss statisch, eigenständig und mit `xmlns` sowie `viewBox` versehen
+sein. Skripte, HTML, CSS, externe Ressourcen und Animationen sind nicht erlaubt.
+Farben, Linien und Schrift über SVG-Präsentationsattribute angeben; Diagramme
+werden auf weißer Zeichenfläche dargestellt. Antwortgrafiken gehören in `back_svg`.
+
+Grafiken werden mit der Karte lokal gespeichert und synchronisiert. Unveränderte
+SVGs werden bei späteren Hintergrund-Pulls anhand der Karten-Version aus dem
+lokalen Cache ergänzt und nicht erneut übertragen. Die restlichen Metadaten und
+Bewertungen verwenden weiterhin den bestehenden vollständigen Snapshot.
+Ältere Texteditoren erhalten die Grafik, wenn sie die neuen Felder nicht mitsenden.
+Ein neues Frontend vor dem Datenbank-Update hält Grafikkarten lokal in der Queue.
+
+Im Editor können SVG-Dateien pro Seite hinzugefügt, ersetzt oder entfernt werden.
+Beim Lernen: **Leertaste** zeigt die Antwort, **Gut** ist vorausgewählt;
+**Pfeiltasten** wechseln die Bewertung, **Leertaste** bestätigt. **1–4** und
+**Enter** auf dem fokussierten Bewertungsbutton funktionieren weiterhin.
+
 ## Update einer bereits funktionierenden Verbindung: Löschen ergänzen
 
 Diese Schritte einmal als Betreiber ausführen. Die vorhandenen OAuth-Adressen

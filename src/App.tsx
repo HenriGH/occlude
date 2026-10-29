@@ -19,7 +19,7 @@ import { DeckNavigation } from './components/DeckNavigation'
 import { FolderBreadcrumbs } from './components/FolderBreadcrumbs'
 import { StreakBadge, StreakCelebration } from './components/Streak'
 import { BasicEditor, type BasicDraft } from './components/BasicEditor'
-import { CardText } from './components/CardText'
+import { CardFace } from './components/CardFace'
 import { ChatGPTSettings } from './components/ChatGPTSettings'
 
 type View = 'dashboard' | 'library' | 'create' | 'settings'
@@ -215,7 +215,7 @@ function UploadArea({ onUpload, large }: { onUpload: () => void; large?: boolean
   return <div className={`upload-area ${large ? 'large' : ''}`}><span className="upload-icon"><ImagePlus size={26} strokeWidth={1.5} /></span><div><h3>Bild hinzufügen</h3><p>Einfügen, hierher ziehen oder auswählen.</p></div><button className="button subtle" onClick={onUpload}><Plus size={17} />Bild auswählen</button><span className="upload-formats">PNG, JPEG, WebP · bis 15 MB</span></div>
 }
 function BasicTile({ card, deckName, onEdit, onDelete }: { card: BasicCard; deckName: string; onEdit: () => void; onDelete: () => void }) {
-  return <article className="image-tile basic-tile"><button className="basic-tile-open" onClick={onEdit} aria-label={`Frage-Antwort-Karte bearbeiten: ${card.front}`}><span className="basic-tile-preview"><CardText text={card.front} /></span><span className="image-tile-info"><strong>{deckName}</strong><span>Frage &amp; Antwort</span></span></button><button className="icon-button basic-tile-delete" aria-label={`Karte löschen: ${card.front}`} onClick={onDelete}><Trash2 size={16} /></button></article>
+  return <article className="image-tile basic-tile"><button className="basic-tile-open" onClick={onEdit} aria-label={`Frage-Antwort-Karte bearbeiten: ${card.front}`}><div className="basic-tile-preview"><CardFace text={card.front} svg={card.frontSvg} label="Frage" /></div><span className="image-tile-info"><strong>{deckName}</strong><span>Frage &amp; Antwort</span></span></button><button className="icon-button basic-tile-delete" aria-label={`Karte löschen: ${card.front}`} onClick={onDelete}><Trash2 size={16} /></button></article>
 }
 
 function ImageTile({ image, decks, count, onEdit, onError }: { image: ImageRecord; decks: Deck[]; count: number; onEdit: () => void; onError: (e: unknown) => void }) {

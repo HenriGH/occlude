@@ -25,6 +25,12 @@ Question-answer cards support plain text and LaTeX formulas on both sides, local
 editing, folders, the same review queue and synchronized history. Under **Neu**,
 choose **Frage & Antwort** instead of an image. Editing preserves the card's
 schedule. Formulas use `$...$` or `$$...$$`; HTML is treated as text.
+Cards can also carry one static SVG diagram per side. ChatGPT sends optional
+`front_svg`/`back_svg` fields directly; the editor can import, replace or remove
+SVG files. Answer graphics stay hidden until reveal. Diagrams are cached locally;
+unchanged graphics are omitted from subsequent version-aware cloud snapshots.
+Apply the new `202610290001_card_svg.sql` migration and redeploy the website/MCP
+function using [the update guide](docs/chatgpt/SETUP.md).
 
 An authenticated MCP integration lets ChatGPT save new cards directly into an
 Occlude account after one-time connection. No model API key or manual import is
@@ -161,6 +167,8 @@ selected mask, Ctrl/Cmd+Z undo. Use zoom controls, the wheel, or two fingers to 
 After drawing, the selected mask's corner handle is immediately available for
 resizing. Drawing on an empty part of the image continues creating new masks.
 During review, Space reveals and keys 1–4 rate. Other masks stay covered.
+After reveal, Gut receives focus. Arrow keys select a rating and Space confirms;
+Home/End select the first/last rating. Holding Space does not skip or rate cards.
 
 Click a saved image to edit its masks. Moving an existing mask preserves its card
 ID and history. Removing a mask removes that target's local history. Image options

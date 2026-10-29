@@ -1,6 +1,7 @@
 // Run with Deno and the Edge Function's import map. This is an isolated protocol
 // fixture: no real account, hosted RPC, OpenAI request or database write is used.
 import { createMcpHandler } from '../server/mcp.ts'
+import { diagram } from '../src/test/cardSvgFixture.ts'
 
 const base = 'https://runtime-fixture.supabase.co/functions/v1/occlude-mcp'
 const handler = createMcpHandler({ supabaseUrl: 'https://runtime-fixture.supabase.co', publishableKey: 'public-fixture', appUrl: 'https://occlude.example' }, async () => ({
@@ -20,8 +21,10 @@ const initialized = await call('initialize', { protocolVersion: '2025-06-18', ca
 assert(initialized.serverInfo.name === 'occlude', 'MCP initialization failed')
 const tools = await call('tools/list', {})
 assert(tools.tools.length === 6 && tools.tools.find((tool: { name: string }) => tool.name === 'delete_flashcards').annotations.destructiveHint === true, 'Tool discovery failed')
-const saved = await call('tools/call', { name: 'create_flashcards', arguments: { request_id: crypto.randomUUID(), cards: [{ front: 'Q', back: 'A' }] } })
+const saved = await call('tools/call', { name: 'create_flashcards', arguments: { request_id: crypto.randomUUID(), cards: [{ front: 'Q', back: 'A', back_svg: diagram }] } })
 assert(saved.structuredContent.created_count === 1 && saved.isError !== true, 'Tool invocation failed')
+const rejected = await call('tools/call', { name: 'create_flashcards', arguments: { request_id: crypto.randomUUID(), cards: [{ front: 'Q', back: 'A', back_svg: '<svg><script>bad()</script></svg>' }] } })
+assert(rejected.isError === true, 'Unsafe SVG was not rejected')
 const removed = await call('tools/call', { name: 'delete_flashcards', arguments: { request_id: crypto.randomUUID(), cards: saved.structuredContent.created_cards } })
 assert(removed.structuredContent.deleted_count === 1 && removed.isError !== true, 'Deletion invocation failed')
 console.log('Deno MCP runtime: discovery, authentication challenge, initialization, tools, creation and deletion passed.')

@@ -3,6 +3,7 @@
   "specifiers": {
     "npm:@modelcontextprotocol/sdk@1.32.1": "1.32.1_zod@4.6.7",
     "npm:@supabase/supabase-js@2.118.0": "2.118.0",
+    "npm:saxes@6.0.0": "6.0.0",
     "npm:zod@4.6.7": "4.6.7"
   },
   "npm": {
@@ -461,6 +462,12 @@
     "safer-buffer@2.1.2": {
       "integrity": "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg=="
     },
+    "saxes@6.0.0": {
+      "integrity": "sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==",
+      "dependencies": [
+        "xmlchars"
+      ]
+    },
     "send@1.2.1": {
       "integrity": "sha512-1gnZf7DFcoIcajTjTwjwuDjzuz4PPcY2StKPlsGAQ1+YH20IRVrBaXSWmdjowTJ6u8Rc01PoYOGHXfP1mYcZNQ==",
       "dependencies": [
@@ -567,6 +574,9 @@
     "wrappy@1.0.2": {
       "integrity": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ=="
     },
+    "xmlchars@2.2.0": {
+      "integrity": "sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw=="
+    },
     "zod-to-json-schema@3.25.2_zod@4.6.7": {
       "integrity": "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==",
       "dependencies": [
@@ -581,6 +591,7 @@
     "dependencies": [
       "npm:@modelcontextprotocol/sdk@1.32.1",
       "npm:@supabase/supabase-js@2.118.0",
+      "npm:saxes@6.0.0",
       "npm:zod@4.6.7"
     ]
   }

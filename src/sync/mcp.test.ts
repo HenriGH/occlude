@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMcpHandler, supabaseMcpAuthorization, type McpAccess } from '../../server/mcp'
+import { diagram } from '../test/cardSvgFixture'
 
 const configuration = { supabaseUrl: 'https://mcp-fixture.supabase.co', publishableKey: 'public-fixture', appUrl: 'https://occlude.example/' }
 const endpoint = `${configuration.supabaseUrl}/functions/v1/occlude-mcp/mcp`
@@ -40,7 +41,7 @@ describe('public MCP protocol and input boundaries', () => {
       for (const name of ['delete_flashcards', 'delete_folder']) expect(list.tools.find(tool => tool.name === name)?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: true })
       const requestId = crypto.randomUUID(), data = { created_count: 1, card_ids: [crypto.randomUUID()], deck_id: crypto.randomUUID(), deck_name: 'Mathematik' }
       rpc.mockResolvedValue({ data, error: null })
-      const args = { request_id: requestId, deck_name: 'Mathematik', cards: [{ front: 'Wie lautet die Produktregel?', back: '$\\log_b(xy)=\\log_b(x)+\\log_b(y)$ für $x,y>0$, $b>0$, $b\\ne1$.' }] }
+      const args = { request_id: requestId, deck_name: 'Mathematik', cards: [{ front: 'Wie lautet die Produktregel?', back: '$\\log_b(xy)=\\log_b(x)+\\log_b(y)$ für $x,y>0$, $b>0$, $b\\ne1$.', back_svg: diagram }] }
       const result = await client.callTool({ name: 'create_flashcards', arguments: args })
       expect(result.isError).not.toBe(true)
       expect(result.structuredContent).toEqual({ ...data, created_cards: [{ id: data.card_ids[0], version: 1 }], app_url: configuration.appUrl })
@@ -78,6 +79,15 @@ describe('public MCP protocol and input boundaries', () => {
       expect((await client.callTool({ name: 'delete_folder', arguments: { request_id: request, folder_id: folder } })).isError).toBe(true)
       expect((await client.callTool({ name: 'delete_folder', arguments: { request_id: request, folder_id: folder, snapshot_token: 'a'.repeat(64), delete_all: true } })).isError).toBe(true)
       expect((await client.callTool({ name: 'list_flashcards', arguments: { limit: 101 } })).isError).toBe(true)
+      expect(rpc).not.toHaveBeenCalled()
+    } finally { await client.close() }
+  })
+  it('rejects unsafe vector graphics before any database call', async () => {
+    const { handler, rpc } = fixture(), client = await clientFor(handler)
+    try {
+      for (const svg of ['<svg/>', diagram.replace('<title>', '<script>alert(1)</script><title>'), diagram.replace('<title>', '<image href="https://external.test/x"/><title>'), 'x'.repeat(100001)]) {
+        expect((await client.callTool({ name: 'create_flashcards', arguments: { request_id: crypto.randomUUID(), cards: [{ front: 'Q', back: 'A', front_svg: svg }] } })).isError).toBe(true)
+      }
       expect(rpc).not.toHaveBeenCalled()
     } finally { await client.close() }
   })

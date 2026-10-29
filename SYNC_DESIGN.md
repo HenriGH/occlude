@@ -111,6 +111,20 @@ after its card was deleted is accepted into history without restoring the card.
 
 ## Canonical scheduling
 
+Static vector diagrams belong to basic-card metadata (`front_svg`/`back_svg` on
+the wire and `frontSvg`/`backSvg` locally). New writes validate bounded passive
+SVGs, preserve the schedule, and share the existing transactional outbox.
+Older writers omitting the fields preserve stored graphics; explicit empty strings
+clear them. Retry acknowledgments never reapply an earlier graphic over a later edit.
+Clients request snapshot v3 with known graphic-card versions. Matching live cards
+omit SVG bodies and mark `svg_unchanged`; parsing requires a matching local version
+before reusing captured graphics. Pending local card edits are excluded from this
+optimization, and another account's cache is never advertised. First pulls and
+changed cards include graphics; tombstones omit them. The remaining metadata and
+event history still use full snapshots. Missing v3/v2 RPCs fall back in order;
+authentication/server errors do not trigger fallback. Graphics remain local and
+queued against a backend without `card-svg` support.
+
 Question-answer cards use the same card IDs, append-only review events and FSRS
 replay as image cards. Dexie v3 adds a deck index without changing old IDs/history.
 `basic.put/delete` commits locally with an outbox operation; it never sends a

@@ -1,5 +1,6 @@
 import { devices, expect, test, type Page } from '@playwright/test'
 import { cloudFixture, createLocalLibrary, localState, seedWorkspace } from './helpers/cloud'
+import { diagram } from '../src/test/cardSvgFixture'
 
 const { defaultBrowserType: _browserType, ...phone } = devices['Pixel 7']
 test.use(phone)
@@ -7,6 +8,42 @@ async function startTextCard(page: Page) {
   await page.getByRole('button', { name: 'Karte erstellen', exact: true }).click()
   await page.getByRole('button', { name: 'Frage & Antwort', exact: true }).click()
 }
+
+test('vector question and answer graphics survive offline review, editing and explicit removal without leaking the answer', async ({ page, context }) => {
+  await context.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())
+  await page.goto('/')
+  await startTextCard(page)
+  await page.getByRole('textbox', { name: 'Frage', exact: true }).fill('Welche Funktion zeigt die Grafik?')
+  await page.getByRole('textbox', { name: 'Antwort', exact: true }).fill('Eine Logarithmusfunktion.')
+  await page.getByLabel('SVG zur Frage hinzufügen').setInputFiles({ name: 'question.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(diagram) })
+  await page.getByLabel('SVG zur Antwort hinzufügen').setInputFiles({ name: 'answer.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(diagram.replace('Logarithmusfunktion', 'Lösung')) })
+  await expect(page.getByRole('img', { name: 'Grafik zur Antwort' })).toBeVisible()
+  await page.getByRole('button', { name: 'Karte speichern', exact: true }).click()
+  await page.reload()
+  await page.getByRole('button', { name: 'Lernen', exact: true }).click()
+  await expect(page.getByRole('img', { name: 'Grafik zur Frage' })).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Grafik zur Antwort' })).toHaveCount(0)
+  expect(await page.getByRole('img', { name: 'Grafik zur Frage' }).evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true)
+  await context.setOffline(true)
+  await page.getByRole('button', { name: 'Antwort zeigen' }).click()
+  await expect(page.getByRole('img', { name: 'Grafik zur Antwort' })).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Grafik zur Frage' })).toHaveCount(0)
+  await page.setViewportSize({ width: 320, height: 640 })
+  expect(await page.getByRole('img', { name: 'Grafik zur Antwort' }).evaluate(img => img.getBoundingClientRect().right <= innerWidth)).toBe(true)
+  await page.getByRole('button', { name: /^Gut/ }).click()
+  expect((await localState(page)).reviews).toBe(1)
+  await context.setOffline(false)
+  await page.getByRole('button', { name: 'Lernen beenden' }).click()
+  await page.getByRole('button', { name: 'Frage-Antwort-Karte bearbeiten: Welche Funktion zeigt die Grafik?' }).click()
+  await page.getByRole('textbox', { name: 'Frage', exact: true }).fill('Graph bestimmen?')
+  await page.getByRole('button', { name: 'Grafik zur Antwort entfernen' }).click()
+  await page.getByRole('button', { name: 'Karte speichern', exact: true }).click()
+  await page.reload()
+  await page.getByRole('button', { name: 'Frage-Antwort-Karte bearbeiten: Graph bestimmen?' }).click()
+  await expect(page.getByRole('img', { name: 'Grafik zur Frage' })).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Grafik zur Antwort' })).toHaveCount(0)
+  expect((await localState(page)).reviews).toBe(1)
+})
 
 test('manually created math cards persist, review offline and edit without resetting history', async ({ page, context }) => {
   await context.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort())

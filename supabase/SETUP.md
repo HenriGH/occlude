@@ -26,6 +26,10 @@ shared outside trusted administration, revoke it in Supabase's project settings.
    ChatGPT deletion and expanded consent. Existing grants keep creation-only
    access until disconnected/reconnected through the new consent page. Redeploy
    the website and `occlude-mcp` function as described in the linked guide.
+9. Apply `supabase/migrations/202610290001_card_svg.sql` once for vector diagrams
+   and version-aware SVG snapshots. Redeploy the site and MCP function. Existing
+   OAuth grants still work; updating ChatGPT's tool definitions exposes the new
+   optional graphic fields. Use the current update section in the linked guide.
 
 For the public ChatGPT app, also follow [the OAuth/MCP deployment guide](../docs/chatgpt/SETUP.md).
 The SQL migration alone does not deploy the function, enable Supabase's OAuth

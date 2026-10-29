@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowLeft, ArrowRight, Check, Eye } from 'lucide-react'
 import { db, rateCard, refreshReviewQueue } from '../db'
 import { scheduler, type DailyStreak, type Flashcard, type Grade } from '../domain'
-import { CardText, prepareCardText } from './CardText'
+import { prepareCardText } from './CardText'
+import { CardFace } from './CardFace'
 import { ImageSurface } from './ImageSurface'
 import { ensureImageAsset } from '../sync/runtime'
 
@@ -19,6 +20,7 @@ export function Review({ ids: initialIds, root, onClose, onError, onStreak }: { 
   const [revealed, setRevealed] = useState(false)
   const [busy, setBusy] = useState(false)
   const locked = useRef(false)
+  const selectedGrade = useRef<Grade>(3)
   const skipped = useRef(new Set<string>())
   const [assetError, setAssetError] = useState('')
   const result = useLiveQuery(async () => {
@@ -55,6 +57,7 @@ export function Review({ ids: initialIds, root, onClose, onError, onStreak }: { 
     try { next = await refreshReviewQueue(pending, root, skipped.current) }
     catch (e) { onError(e) }
     setIds([...ids.slice(0, index + 1), ...next])
+    selectedGrade.current = 3
     setRevealed(false); setIndex(index + 1)
   }
   async function skip() {
@@ -66,8 +69,11 @@ export function Review({ ids: initialIds, root, onClose, onError, onStreak }: { 
   }
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.repeat || (e.target as HTMLElement).matches('input, select, textarea, button')) return
-      if (e.code === 'Space' && (data?.asset || data?.card.kind === 'basic')) { e.preventDefault(); setRevealed(true) }
+      const target = e.target instanceof HTMLElement ? e.target : null
+      if (e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey || target?.closest('input, select, textarea, [contenteditable="true"]')) return
+      if (target?.closest('button, a') && !target.closest('.rating-buttons')) return
+      if (e.repeat) { if (e.code === 'Space' || /^[1-4]$/.test(e.key)) e.preventDefault(); return }
+      if (e.code === 'Space' && (data?.asset || data?.card.kind === 'basic')) { e.preventDefault(); if (revealed) void rate(selectedGrade.current); else setRevealed(true) }
       if (revealed && /^[1-4]$/.test(e.key)) { e.preventDefault(); void rate(Number(e.key) as Grade) }
     }
     window.addEventListener('keydown', handler)
@@ -79,17 +85,31 @@ export function Review({ ids: initialIds, root, onClose, onError, onStreak }: { 
     <div className="review-header"><button className="icon-button" aria-label="Lernen beenden" onClick={onClose}><ArrowLeft size={20} /></button><div className="review-progress" role="progressbar" aria-label="Lernfortschritt" aria-valuemin={0} aria-valuemax={ids.length} aria-valuenow={index}><div style={{ width: `${ids.length ? index / ids.length * 100 : 100}%` }} /></div></div>
     {complete ? <div className="session-complete"><span className="success-emblem"><Check size={40} /></span><h1>Fertig für jetzt</h1><p className="muted">{index - skipped.current.size} {index - skipped.current.size === 1 ? 'Karte wiederholt' : 'Karten wiederholt'}.</p><button className="button primary" onClick={onClose}>Zur Übersicht <ArrowRight size={17} /></button></div> : <>
       <div className="review-stage">
-      {data === undefined ? <p role="status">Karte wird geladen …</p> : data?.card.kind === 'basic' ? <div role="region" aria-label={revealed ? 'Antwort' : 'Frage'} tabIndex={0} className={`review-basic${revealed ? ' revealed' : ''}`} key={`${index}:${data.card.id}`}><CardText text={revealed ? data.card.back : data.card.front} /></div> : !data?.asset ? <div className="empty-panel"><h2>{data ? 'Bild auf diesem Gerät nicht verfügbar' : 'Diese Karte wurde gelöscht'}</h2><p>{assetError || (data ? 'Das Originalbild wird geladen …' : 'Die Karte kann gerade nicht bewertet werden.')}</p>{data && assetError && <button className="button" onClick={() => setAssetError('')}>Bild erneut laden</button>}<button className="button" disabled={busy} onClick={() => void skip()}>Überspringen</button></div> : <div className={`review-image ${revealed ? 'revealed' : ''}`}><ImageSurface key={`${index}:${data.card.id}`} asset={data.asset} regions={data.regions} targetId={data.card.regionId} revealed={revealed} /></div>}
+      {data === undefined ? <p role="status">Karte wird geladen …</p> : data?.card.kind === 'basic' ? <div role="region" aria-label={revealed ? 'Antwort' : 'Frage'} tabIndex={0} className={`review-basic${revealed ? ' revealed' : ''}`} key={`${index}:${data.card.id}`}><CardFace text={revealed ? data.card.back : data.card.front} svg={revealed ? data.card.backSvg : data.card.frontSvg} label={revealed ? 'Antwort' : 'Frage'} /></div> : !data?.asset ? <div className="empty-panel"><h2>{data ? 'Bild auf diesem Gerät nicht verfügbar' : 'Diese Karte wurde gelöscht'}</h2><p>{assetError || (data ? 'Das Originalbild wird geladen …' : 'Die Karte kann gerade nicht bewertet werden.')}</p>{data && assetError && <button className="button" onClick={() => setAssetError('')}>Bild erneut laden</button>}<button className="button" disabled={busy} onClick={() => void skip()}>Überspringen</button></div> : <div className={`review-image ${revealed ? 'revealed' : ''}`}><ImageSurface key={`${index}:${data.card.id}`} asset={data.asset} regions={data.regions} targetId={data.card.regionId} revealed={revealed} /></div>}
       </div>
-      <div className="review-actions">{revealed && question && <p className="review-question">{question}</p>}{(data?.asset || data?.card.kind === 'basic') && (revealed ? <RatingButtons card={data.card} busy={busy} onRate={rate} /> : <button className="button primary reveal-button" disabled={busy} onClick={() => setRevealed(true)}><Eye size={19} /> Antwort zeigen <kbd>Leertaste</kbd></button>)}</div>
+      <div className="review-actions">{revealed && question && <p className="review-question">{question}</p>}{(data?.asset || data?.card.kind === 'basic') && (revealed ? <RatingButtons card={data.card} busy={busy} onRate={rate} onSelect={grade => { selectedGrade.current = grade }} /> : <button className="button primary reveal-button" disabled={busy} onClick={() => setRevealed(true)}><Eye size={19} /> Antwort zeigen <kbd>Leertaste</kbd></button>)}</div>
     </>}
   </section>
 }
 
-function RatingButtons({ card, busy, onRate }: { card: Flashcard; busy: boolean; onRate: (g: Grade) => Promise<void> }) {
+function RatingButtons({ card, busy, onRate, onSelect }: { card: Flashcard; busy: boolean; onRate: (g: Grade) => Promise<void>; onSelect: (g: Grade) => void }) {
+  const group = useRef<HTMLDivElement>(null)
+  useEffect(() => { group.current?.querySelectorAll('button')[2]?.focus({ preventScroll: true }) }, [card.id])
+  function keyboard(event: ReactKeyboardEvent) {
+    if (event.ctrlKey || event.metaKey || event.altKey) return
+    const buttons = [...(group.current?.querySelectorAll('button') ?? [])]
+    const index = buttons.indexOf(event.target as HTMLButtonElement)
+    if (index < 0) return
+    if (event.code === 'Space') { event.preventDefault(); if (!event.repeat && !busy) void onRate(index + 1 as Grade); return }
+    const step = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : 0
+    if (step || event.key === 'Home' || event.key === 'End') {
+      event.preventDefault()
+      buttons[event.key === 'Home' ? 0 : event.key === 'End' ? 3 : Math.max(0, Math.min(3, index + step))]?.focus({ preventScroll: true })
+    }
+  }
   const now = new Date()
-  return <div className="rating-buttons">{(['Nochmal', 'Schwer', 'Gut', 'Einfach'] as const).map((label, i) => {
+  return <div className="rating-buttons" role="group" aria-label="Bewertung" ref={group} onKeyDown={keyboard}>{(['Nochmal', 'Schwer', 'Gut', 'Einfach'] as const).map((label, i) => {
     const grade = i + 1 as Grade
-    return <button key={label} className={`rating rating-${grade}`} disabled={busy} onClick={() => void onRate(grade)}><span>{label}<kbd>{grade}</kbd></span><small>{interval(scheduler.next(card.schedule, now, grade).card.due, now)}</small></button>
+    return <button key={label} className={`rating rating-${grade}`} disabled={busy} onFocus={() => onSelect(grade)} onClick={() => void onRate(grade)}><span>{label}<kbd>{grade}</kbd></span><small>{interval(scheduler.next(card.schedule, now, grade).card.due, now)}</small></button>
   })}</div>
 }

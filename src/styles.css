@@ -269,6 +269,7 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
 .rating-2 { color: #96752a; }
 .rating-3 { background: var(--soft); color: var(--accent-text); border-color: var(--accent-ring); }
 .rating-4 { color: var(--accent-text); }
+.rating:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 3px; }
 .session-complete { grid-row: 2 / 4; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 80px 20px; text-align: center; }
 .success-emblem { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: var(--soft); color: var(--accent-text); }
 .empty-panel { padding: 30px 16px; text-align: center; }
@@ -507,6 +508,13 @@ input:focus-visible, select:focus-visible { border-color: var(--accent-ring); }
 .basic-editor-face { min-width: 0; padding: 24px; border: 1px solid var(--border); border-radius: 20px; background: var(--panel); box-shadow: var(--shadow); }
 .basic-editor-face textarea { width: 100%; min-height: 220px; border: 0; padding: 0; resize: vertical; color: var(--ink); background: transparent; font: inherit; line-height: 1.7; font-size: 16px; }
 .basic-preview { min-height: 220px; font-size: 17px; line-height: 1.7; overflow-wrap: anywhere; }
+.card-face { display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%; min-width: 0; }
+.card-artwork { display: block; width: 100%; max-width: 760px; height: auto; max-height: 52dvh; object-fit: contain; background: #fff; border-radius: 12px; }
+.basic-artwork-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+.basic-artwork-actions label { cursor: pointer; }
+.basic-editor-face > .card-face { margin-top: 12px; }
+.basic-tile-preview > .card-face { max-height: 100%; overflow: hidden; gap: 10px; }
+.basic-tile-preview .card-artwork { max-height: 110px; border-radius: 6px; }
 .basic-format-hint { color: var(--muted); font-size: 12px; margin-top: 15px; }
 .card-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .card-math { display: inline-block; max-width: 100%; overflow-x: auto; vertical-align: middle; white-space: normal; }

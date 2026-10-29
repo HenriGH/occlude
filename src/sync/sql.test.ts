@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { SCHEDULER_VERSION } from '../domain'
 import type { WireOperation } from './model'
 import { sqlBackend } from '../test/sqlBackend'
+import { diagram } from '../test/cardSvgFixture'
 
 let pg: PGlite
 let userA: string, userB: string
@@ -171,6 +172,48 @@ describe('ChatGPT deletion capabilities', () => {
 })
 
 describe('PostgreSQL migration and tenant security', () => {
+  it('creates vector cards atomically, keeps graphics through older text editors, and does not replay stale graphic updates', async () => {
+    const folder = await deck(), client = id(), request = id()
+    await pg.query('select public.occlude_authorize_chatgpt($1,$2)', [client, 'ChatGPT'])
+    await asUser(userA, client)
+    const cards = [{ front: 'Graph?', back: 'Explanation', front_svg: diagram, back_svg: diagram.replace('Logarithmusfunktion', 'Lösung') }]
+    const create = (content: unknown[]) => pg.query<{ data: any }>('select public.occlude_mcp_create_cards($1,$2,null,$3::jsonb) data', [request, folder, JSON.stringify(content)])
+    const saved = (await create(cards)).rows[0].data
+    expect((await create(cards)).rows[0].data).toEqual(saved)
+    await expect(create([{ ...cards[0], front_svg: '' }])).rejects.toThrow(/reused/)
+    const card = saved.card_ids[0]
+    await asUser(userA)
+    const state = (await pg.query<{ data: any }>('select public.occlude_snapshot_v2() data')).rows[0].data
+    expect(state.features).toContain('card-svg')
+    expect(state.cards.find((row: any) => row.id === card)).toMatchObject({ front_svg: diagram, back_svg: cards[0].back_svg })
+    const thin = (await pg.query<{ data: any }>('select public.occlude_snapshot_v3($1::jsonb) data', [JSON.stringify({ [card]: 1 })])).rows[0].data
+    expect(thin.cards.find((row: any) => row.id === card)).toMatchObject({ svg_unchanged: true })
+    expect(JSON.stringify(thin)).not.toContain('Logarithmusfunktion')
+    const stale = (await pg.query<{ data: any }>('select public.occlude_snapshot_v3($1::jsonb) data', [JSON.stringify({ [card]: 999 })])).rows[0].data
+    expect(stale.cards.find((row: any) => row.id === card).front_svg).toBe(diagram)
+    const text = { id: card, kind: 'basic', deckId: folder, front: 'Edited text', back: 'Answer', createdAt: now }
+    await apply(operation('basic.put', card, text, 1))
+    expect((await pg.query<{ front_svg: string }>('select front_svg from public.cards where id=$1', [card])).rows[0].front_svg).toBe(diagram)
+    const clear = operation('basic.put', card, { ...text, frontSvg: '', backSvg: '' }, 2)
+    await apply(clear)
+    const restore = operation('basic.put', card, { ...text, frontSvg: diagram, backSvg: '' }, 3)
+    await apply(restore)
+    await apply(clear)
+    expect((await pg.query<{ front_svg: string; version: number }>('select front_svg,version from public.cards where id=$1', [card])).rows[0]).toMatchObject({ front_svg: diagram, version: 4 })
+    await asUser(userB)
+    expect((await pg.query<{ data: any }>('select public.occlude_snapshot_v2() data')).rows[0].data.cards).toHaveLength(0)
+  })
+  it('rejects active, oversized or null vector payloads without partially creating a batch', async () => {
+    const folder = await deck(), client = id()
+    await pg.query('select public.occlude_authorize_chatgpt($1,$2)', [client, 'ChatGPT'])
+    await asUser(userA, client)
+    for (const svg of [null, 'x'.repeat(100001), diagram.replace('<title>', '<script>alert(1)</script><title>'), diagram.replace('<title>', '<image href="https://external.test/x"/><title>')]) {
+      const cards = [{ front: 'Valid first', back: 'A' }, { front: 'Invalid second', back: 'A', back_svg: svg }]
+      await expect(pg.query('select public.occlude_mcp_create_cards($1,$2,null,$3::jsonb)', [id(), folder, JSON.stringify(cards)])).rejects.toThrow()
+    }
+    await asUser(userA)
+    expect((await pg.query('select id from public.cards')).rows).toHaveLength(0)
+  })
   it('upgrades an existing database without losing cards or immutable review events', async () => {
     const legacy = await sqlBackend({ through: '202610170001_initial_sync.sql' })
     try {
@@ -192,6 +235,7 @@ describe('PostgreSQL migration and tenant security', () => {
       await legacy.query('select public.occlude_authorize_chatgpt($1,$2)', [client, 'Existing ChatGPT'])
       await legacy.exec('reset role')
       await legacy.exec(await readFile('supabase/migrations/202610200002_chatgpt_deletion.sql', 'utf8'))
+      await legacy.exec(await readFile('supabase/migrations/202610290001_card_svg.sql', 'utf8'))
       await legacy.exec('set role authenticated')
       expect((await legacy.query<{ data: any }>('select public.occlude_chatgpt_connections() data')).rows[0].data).toContainEqual(expect.objectContaining({ client_id: client, can_manage: false }))
       const state = (await legacy.query<{ data: any }>('select public.occlude_snapshot() data')).rows[0].data

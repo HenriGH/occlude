@@ -3,6 +3,7 @@ import { createEmptyCard } from 'ts-fsrs'
 import { dailyStreak, descendants, MAX_MASK_LABEL_LENGTH, replay, reviewDay, reviewQueue, SCHEDULER_VERSION, validBasicText, validRect, validateParent, type Asset, type BasicCard, type Deck, type Flashcard, type Grade, type ImageRecord, type Preferences, type Rect, type Region, type ReviewEvent } from './domain'
 import { enqueue, enqueueImage, type OutboxOperation, type SyncMeta } from './sync/model'
 import { setStorageBlocked } from './storageLifecycle'
+import { validCardSvg } from './cardSvg'
 
 export class OccludeDB extends Dexie {
   decks!: EntityTable<Deck, 'id'>
@@ -94,19 +95,21 @@ export async function saveImage(asset: Asset, deckId: string, rects: Rect[], exi
   })
 }
 
-export async function saveBasicCard(deckId: string, front: string, back: string, id = uid(), database = db) {
+export async function saveBasicCard(deckId: string, front: string, back: string, id = uid(), database = db, artwork?: { frontSvg: string; backSvg: string }) {
   if (!validBasicText(front) || !validBasicText(back)) throw new Error('Frage und Antwort müssen jeweils 1 bis 10.000 Zeichen enthalten.')
   return database.transaction('rw', database.tables, async () => {
     if (!await database.decks.get(deckId)) throw new Error('Der gewählte Ordner existiert nicht mehr.')
     const previous = await database.cards.get(id)
     if (previous && previous.kind !== 'basic') throw new Error('Dieser Kartentyp kann nicht ersetzt werden.')
+    const frontSvg = artwork?.frontSvg ?? previous?.frontSvg ?? '', backSvg = artwork?.backSvg ?? previous?.backSvg ?? ''
+    if (!validCardSvg(frontSvg) || !validCardSvg(backSvg)) throw new Error('Die SVG-Grafik ist ungültig oder enthält nicht unterstützte Inhalte.')
     front = front.trim(); back = back.trim()
-    if (previous?.deckId === deckId && previous.front === front && previous.back === back) return id
+    if (previous?.deckId === deckId && previous.front === front && previous.back === back && (previous.frontSvg ?? '') === frontSvg && (previous.backSvg ?? '') === backSvg) return id
     const now = Date.now()
-    const card: BasicCard = { id, kind: 'basic', deckId, front, back, createdAt: previous?.createdAt ?? now, updatedAt: now, schedule: previous?.schedule ?? createEmptyCard(new Date(now)) }
+    const card: BasicCard = { id, kind: 'basic', deckId, front, back, ...(frontSvg ? { frontSvg } : {}), ...(backSvg ? { backSvg } : {}), createdAt: previous?.createdAt ?? now, updatedAt: now, schedule: previous?.schedule ?? createEmptyCard(new Date(now)) }
     await database.cards.put(card)
     const { schedule: _schedule, ...metadata } = card
-    await enqueue(database, 'basic.put', id, metadata)
+    await enqueue(database, 'basic.put', id, { ...metadata, frontSvg, backSvg })
     return id
   })
 }

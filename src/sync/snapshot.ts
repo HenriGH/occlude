@@ -2,11 +2,13 @@ import { createEmptyCard } from 'ts-fsrs'
 import { descendants, MAX_MASK_LABEL_LENGTH, replay, SCHEDULER_VERSION, validBasicText, validRect, type BasicCard, type OcclusionCard, type Deck, type Flashcard, type ImageRecord, type Preferences, type Region, type ReviewEvent } from '../domain'
 import type { OccludeDB } from '../db'
 import { versionKey } from './model'
+import { MAX_CARD_SVG_LENGTH } from '../cardSvg'
 
 interface Versioned<T> { data: T; version: number; deleted: boolean }
 export interface Snapshot {
   regionLabels: boolean
   basicCards: boolean
+  cardSvg: boolean
   decks: Versioned<Deck>[]; images: Versioned<ImageRecord>[]; regions: Versioned<Region>[]
   cards: Versioned<Omit<OcclusionCard, 'schedule'> | Omit<BasicCard, 'schedule'>>[]; reviews: ReviewEvent[]
   profile: { version: number; settings: Pick<Preferences, 'newLimit' | 'dayBoundary'> } | null
@@ -19,7 +21,8 @@ function integer(v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER) { const n =
 function timestamp(v: unknown) { const t = Date.parse(str(v)); return Number.isFinite(t) ? t : fail() }
 function uuid(v: unknown) { const s = str(v); return /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(s) ? s : fail() }
 
-export function parseSnapshot(input: unknown, owner: string): Snapshot {
+export type CachedGraphics = Map<string, { version: number; frontSvg?: string; backSvg?: string }>
+export function parseSnapshot(input: unknown, owner: string, cachedGraphics: CachedGraphics = new Map()): Snapshot {
   const root = object(input)
   if (root.schemaVersion !== 1) throw new Error('Nicht unterstützte Cloud-Version. Bitte die App aktualisieren.')
   const rows = (key: string) => {
@@ -54,7 +57,20 @@ export function parseSnapshot(input: unknown, owner: string): Snapshot {
     if (r.kind === 'basic') {
       if (!Array.isArray(root.features) || !root.features.includes('basic-cards')) return fail()
       if (!validBasicText(r.front) || !validBasicText(r.back) || r.region_id !== null || r.image_id !== null) return fail()
-      return wrap<Omit<BasicCard, 'schedule'>>(r, { id: uuid(r.id), kind: 'basic', deckId: uuid(r.deck_id), front: r.front, back: r.back, createdAt: timestamp(r.created_at), updatedAt: timestamp(r.updated_at) })
+      const artwork: { frontSvg?: string; backSvg?: string } = {}
+      if (r.svg_unchanged === true) {
+        if (!Array.isArray(root.features) || !root.features.includes('card-svg')) return fail()
+        const cached = cachedGraphics.get(uuid(r.id))
+        if (!cached || cached.version !== integer(r.version, 1)) return fail()
+        if (cached.frontSvg) artwork.frontSvg = cached.frontSvg
+        if (cached.backSvg) artwork.backSvg = cached.backSvg
+      }
+      for (const [field, local] of [['front_svg', 'frontSvg'], ['back_svg', 'backSvg']] as const) {
+        if (r[field] === undefined || r[field] === '') continue
+        if (typeof r[field] !== 'string' || r[field].length > MAX_CARD_SVG_LENGTH || !Array.isArray(root.features) || !root.features.includes('card-svg')) return fail()
+        artwork[local] = r[field]
+      }
+      return wrap<Omit<BasicCard, 'schedule'>>(r, { id: uuid(r.id), kind: 'basic', deckId: uuid(r.deck_id), front: r.front, back: r.back, ...artwork, createdAt: timestamp(r.created_at), updatedAt: timestamp(r.updated_at) })
     }
     if (r.kind !== undefined && r.kind !== 'occlusion') return fail()
     return wrap<Omit<OcclusionCard, 'schedule'>>(r, { id: uuid(r.id), imageId: uuid(r.image_id), regionId: uuid(r.region_id), createdAt: timestamp(r.created_at) })
@@ -74,7 +90,7 @@ export function parseSnapshot(input: unknown, owner: string): Snapshot {
     regions.some(r => !images.some(i => i.data.id === r.data.imageId)) ||
     cards.some(({ data: c }) => c.kind === 'basic' ? !decks.some(d => d.data.id === c.deckId) : !regions.some(r => r.data.id === c.regionId && r.data.imageId === c.imageId)) ||
     reviews.some(e => !cards.some(c => c.data.id === e.cardId))) return fail()
-  return { decks, images, regions, cards, reviews, profile, regionLabels: Array.isArray(root.features) && root.features.includes('region-labels'), basicCards: Array.isArray(root.features) && root.features.includes('basic-cards') }
+  return { decks, images, regions, cards, reviews, profile, regionLabels: Array.isArray(root.features) && root.features.includes('region-labels'), basicCards: Array.isArray(root.features) && root.features.includes('basic-cards'), cardSvg: Array.isArray(root.features) && root.features.includes('card-svg') }
 }
 
 // Caller owns a write transaction over metadata, reviews, outbox and syncMeta.
@@ -92,6 +108,7 @@ export async function mergeSnapshot(database: OccludeDB, snapshot: Snapshot) {
   const remember = (key: string, value: unknown) => { if (versions.get(key) !== value) nextMeta.set(key, value) }
   remember('regionLabels', snapshot.regionLabels)
   remember('basicCards', snapshot.basicCards)
+  remember('cardSvg', snapshot.cardSvg)
   const connection = versions.get('connection') as { userId: string } | undefined
   if (connection) for (const image of snapshot.images) {
     // The RPC only publishes metadata after the immutable Storage object exists.

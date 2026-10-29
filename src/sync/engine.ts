@@ -1,11 +1,27 @@
 import type { OccludeDB } from '../db'
 import type { Asset } from '../domain'
 import { enqueue, enqueueImage, versionKey, type Connection, type SyncStatus, type WireOperation } from './model'
-import { mergeSnapshot, parseSnapshot } from './snapshot'
+import { mergeSnapshot, parseSnapshot, type CachedGraphics } from './snapshot'
 import { CloudError, type Transport } from './transport'
 
 export function retryDelay(attempt: number, random = Math.random) { return Math.min(300000, 1000 * 2 ** Math.min(attempt, 9)) * (.8 + random() * .4) }
 export class SyncEngine {
+  private async cloudSnapshot(owner: string) {
+    const graphics: CachedGraphics = new Map()
+    const connection = (await this.database.syncMeta.get('connection'))?.value as Connection | undefined
+    if (connection?.userId === owner && (await this.database.syncMeta.get('cardSvg'))?.value === true) {
+      const [cards, metadata, pending] = await Promise.all([this.database.cards.toArray(), this.database.syncMeta.toArray(), this.database.outbox.toArray()])
+      const versions = new Map(metadata.map(row => [row.key, row.value]))
+      const edited = new Set(pending.filter(op => op.kind.startsWith('basic.')).map(op => op.entityId))
+      for (const card of cards) if (card.kind === 'basic' && (card.frontSvg || card.backSvg) && !edited.has(card.id)) {
+        const version = versions.get(versionKey('basic.put', card.id))
+        if (typeof version === 'number') graphics.set(card.id, { version, frontSvg: card.frontSvg, backSvg: card.backSvg })
+        if (graphics.size === 10000) break // keep the request's version map bounded
+      }
+    }
+    const known = Object.fromEntries([...graphics].map(([id, cached]) => [id, cached.version]))
+    return parseSnapshot(await this.transport.snapshot(owner, known), owner, graphics)
+  }
   private running = false
   private resolving = false
   private active?: Promise<void>
@@ -15,7 +31,7 @@ export class SyncEngine {
 
   async connect(email: string) {
     const owner = await this.transport.userId()
-    const snapshot = parseSnapshot(await this.transport.snapshot(owner), owner)
+    const snapshot = await this.cloudSnapshot(owner)
     await this.database.transaction('rw', this.database.tables, async () => {
       const prior = (await this.database.syncMeta.get('connection'))?.value as Connection | undefined
       if (prior && prior.userId !== owner) throw new Error('Dieses Gerät ist mit einem anderen Konto verbunden. Bitte mit dem ursprünglichen Konto anmelden.')
@@ -84,15 +100,20 @@ export class SyncEngine {
         if (blocked.has(group) || operation.state === 'conflict' || operation.nextAttemptAt > this.clock()) { blocked.add(group); continue }
         if (processed++ === 100) { this.requested = true; break }
         try {
+          if (operation.kind === 'basic.put' && (operation.payload.frontSvg || operation.payload.backSvg) && (await this.database.syncMeta.get('cardSvg'))?.value !== true) {
+            const snapshot = await this.cloudSnapshot(connection.userId)
+            if (!snapshot.cardSvg) throw new CloudError('Für Grafiken fehlt das Supabase-Update 202610290001_card_svg.sql. Die Karte bleibt lokal gespeichert.')
+            await this.database.syncMeta.put({ key: 'cardSvg', value: true })
+          }
           if (operation.kind.startsWith('basic.') && (await this.database.syncMeta.get('basicCards'))?.value !== true) {
-            const snapshot = parseSnapshot(await this.transport.snapshot(connection.userId), connection.userId)
+            const snapshot = await this.cloudSnapshot(connection.userId)
             if (!snapshot.basicCards) throw new CloudError('Für Frage-Antwort-Karten fehlt das Supabase-Update. Bitte 202610200001_basic_cards_chatgpt.sql ausführen. Die Änderung bleibt lokal gespeichert.')
             await this.database.syncMeta.put({ key: 'basicCards', value: true })
           }
           if (operation.kind === 'image.put') {
             const regions = operation.payload.regions as { label?: string }[]
             if (regions.some(r => r.label !== undefined) && (await this.database.syncMeta.get('regionLabels'))?.value !== true) {
-              const snapshot = parseSnapshot(await this.transport.snapshot(connection.userId), connection.userId)
+              const snapshot = await this.cloudSnapshot(connection.userId)
               if (!snapshot.regionLabels) throw new CloudError('Für Maskenfragen fehlt das Supabase-Update. Bitte 202610170002_mask_labels.sql im SQL Editor ausführen. Die Änderung bleibt lokal gespeichert.')
               await this.database.syncMeta.put({ key: 'regionLabels', value: true })
             }
@@ -120,7 +141,7 @@ export class SyncEngine {
           if (!conflict) { this.requested = false; throw e }
         }
       }
-      const snapshot = parseSnapshot(await this.transport.snapshot(connection.userId), connection.userId)
+      const snapshot = await this.cloudSnapshot(connection.userId)
       await this.database.transaction('rw', this.database.tables.filter(t => t.name !== 'assets'), async () => {
         await mergeSnapshot(this.database, snapshot)
         const remaining = await this.database.outbox.toArray()
@@ -144,7 +165,7 @@ export class SyncEngine {
     try {
       const connection = (await this.database.syncMeta.get('connection'))?.value as Connection | undefined
       if (!connection || connection.locked || await this.transport.userId() !== connection.userId) throw new Error('Bitte zuerst anmelden.')
-      const snapshot = parseSnapshot(await this.transport.snapshot(connection.userId), connection.userId)
+      const snapshot = await this.cloudSnapshot(connection.userId)
       await this.database.transaction('rw', this.database.tables, async () => {
         const op = await this.database.outbox.get(operationId)
         if (!op || op.state !== 'conflict' || op.kind === 'review.add') return
@@ -168,7 +189,7 @@ export class SyncEngine {
     try {
       const connection = (await this.database.syncMeta.get('connection'))?.value as Connection | undefined
       if (!connection || connection.locked || await this.transport.userId() !== connection.userId) throw new Error('Bitte zuerst anmelden.')
-      const snapshot = parseSnapshot(await this.transport.snapshot(connection.userId), connection.userId)
+      const snapshot = await this.cloudSnapshot(connection.userId)
       await this.database.transaction('rw', this.database.tables, async () => {
         const pending = await this.database.outbox.toArray()
         const knownCards = new Set(snapshot.cards.map(c => c.data.id))

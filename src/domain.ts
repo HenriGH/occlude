@@ -11,7 +11,7 @@ export interface ImageRecord { id: string; deckId: string; assetHash: string; cr
 export interface Region extends Rect { imageId: string }
 interface CardBase { id: string; createdAt: number; schedule: Card }
 export interface OcclusionCard extends CardBase { kind?: 'occlusion'; regionId: string; imageId: string }
-export interface BasicCard extends CardBase { kind: 'basic'; deckId: string; front: string; back: string; updatedAt: number; imageId?: never; regionId?: never }
+export interface BasicCard extends CardBase { kind: 'basic'; deckId: string; front: string; back: string; frontSvg?: string; backSvg?: string; updatedAt: number; imageId?: never; regionId?: never }
 export type Flashcard = OcclusionCard | BasicCard
 export const MAX_CARD_TEXT_LENGTH = 10000
 export function isBasicCard(card: Flashcard): card is BasicCard { return card.kind === 'basic' }

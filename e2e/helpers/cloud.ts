@@ -41,7 +41,7 @@ export async function cloudFixture(page: Page) {
       return reply({ code: 'refresh_token_not_found', message: 'Refresh token not found' }, 400)
     }
     if (url.pathname === '/auth/v1/user') { cloud.verifications++; return reply(user) }
-    if (['/rest/v1/rpc/occlude_snapshot', '/rest/v1/rpc/occlude_snapshot_v2'].includes(url.pathname)) {
+    if (['/rest/v1/rpc/occlude_snapshot', '/rest/v1/rpc/occlude_snapshot_v2', '/rest/v1/rpc/occlude_snapshot_v3'].includes(url.pathname)) {
       cloud.pulls++
       if (cloud.holdSnapshot) await snapshotGate.promise
       return reply(cloud.snapshot)

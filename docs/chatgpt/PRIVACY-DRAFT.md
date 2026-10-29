@@ -22,8 +22,10 @@ Anwendungsnamen, den Freigabezeitpunkt und die erteilte Verwaltungsberechtigung.
 
 Nach deiner Freigabe darf die Anbindung deine Ordnernamen und Hierarchie abfragen
 sowie neue Ordner und Frage-Antwort-Karten erstellen. Dafür werden die von ChatGPT
-übermittelten Fragen und Antworten in deinem Konto gespeichert. Die Anfrage-ID
-und der Inhalt werden für zuverlässige, doppelfreie Wiederholungen protokolliert.
+übermittelten Fragen und Antworten in deinem Konto gespeichert.
+Optional übermittelte SVG-Diagramme werden ebenfalls mit der jeweiligen Karten-
+seite gespeichert und auf verbundenen Geräten lokal zwischengespeichert.
+Die Anfrage-ID und der Inhalt werden für zuverlässige, doppelfreie Wiederholungen protokolliert.
 Mit ausdrücklich erweiterter Freigabe kann ChatGPT zusätzlich Kartenfragen und
 Maskenbeschriftungen samt IDs/Versionen abfragen und auf deinen Auftrag einzelne
 Karten sowie Ordner mit ihren Unterordnern und Inhalten löschen. Antworten,

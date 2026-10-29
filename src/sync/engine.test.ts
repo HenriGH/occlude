@@ -8,6 +8,7 @@ import { SyncEngine, retryDelay } from './engine'
 import { CloudError, contentHash, type Transport } from './transport'
 import { parseSnapshot } from './snapshot'
 import { createMcpHandler } from '../../server/mcp'
+import { diagram } from '../test/cardSvgFixture'
 import type { Connection, WireOperation } from './model'
 
 let pg: PGlite, owner: string
@@ -32,7 +33,7 @@ class TestTransport implements Transport {
       return tx.query<T>(sql, values)
     })
   }
-  async snapshot(expected: string) { this.check(expected); return (await this.query<{ data: unknown }>('select public.occlude_snapshot_v2() data')).rows[0].data }
+  async snapshot(expected: string, knownCards: Record<string, number> = {}) { this.check(expected); return (await this.query<{ data: unknown }>('select public.occlude_snapshot_v3($1::jsonb) data', [JSON.stringify(knownCards)])).rows[0].data }
   async apply(operation: WireOperation, expected: string) {
     this.check(expected); this.requests.push(operation)
     try { await this.query('select public.occlude_apply_operation($1::jsonb)', [JSON.stringify(operation)]) }
@@ -129,7 +130,7 @@ describe('local outbox + actual PostgreSQL RPC integration', () => {
     }
     const handler = createMcpHandler({ supabaseUrl: 'https://test.supabase.co', publishableKey: 'public', appUrl: 'https://occlude.example' }, async () => ({ userId: owner, clientId, rpc }))
     const requestId = crypto.randomUUID()
-    const arguments_ = { request_id: requestId, deck_name: 'Logarithmusregeln', cards: [{ front: 'Produktregel?', back: '$\\log_b(xy)=\\log_b(x)+\\log_b(y)$ für x,y>0; b>0, b≠1.' }, { front: 'Quotientenregel?', back: 'Die Differenz der Logarithmen.' }] }
+    const arguments_ = { request_id: requestId, deck_name: 'Logarithmusregeln', cards: [{ front: 'Produktregel?', back: '$\\log_b(xy)=\\log_b(x)+\\log_b(y)$ für x,y>0; b>0, b≠1.', front_svg: diagram, back_svg: diagram.replace('Logarithmusfunktion', 'Lösung') }, { front: 'Quotientenregel?', back: 'Die Differenz der Logarithmen.' }] }
     const send = () => handler(new Request('https://test.supabase.co/functions/v1/occlude-mcp/mcp', { method: 'POST', headers: { Authorization: 'Bearer fixture', 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-06-18' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'create_flashcards', arguments: arguments_ } }) }))
     const first = await (await send()).json()
     expect(first.result.isError).not.toBe(true)
@@ -141,13 +142,14 @@ describe('local outbox + actual PostgreSQL RPC integration', () => {
       expect(await device.db.images.count()).toBe(0)
       expect(await device.db.assets.count()).toBe(0)
       expect((await device.db.cards.toArray()).every(card => card.kind === 'basic')).toBe(true)
+      expect((await device.db.cards.toArray()).find(card => card.kind === 'basic' && card.front === 'Produktregel?')).toMatchObject({ frontSvg: diagram, backSvg: diagram.replace('Logarithmusfunktion', 'Lösung') })
     }
-    const card = (await b.db.cards.toArray())[0]
+    const card = (await b.db.cards.toArray()).find(card => card.kind === 'basic' && card.frontSvg)!
     if (card.kind !== 'basic') throw new Error('Expected a basic card')
     await rateCard(card.id, 3, clock, crypto.randomUUID(), b.db)
     await saveBasicCard(card.deckId, 'Überarbeitete Frage', card.back, card.id, b.db)
     await b.engine.sync(); await a.engine.sync()
-    expect(await a.db.cards.get(card.id)).toMatchObject({ front: 'Überarbeitete Frage', schedule: { reps: 1 } })
+    expect(await a.db.cards.get(card.id)).toMatchObject({ front: 'Überarbeitete Frage', frontSvg: diagram, schedule: { reps: 1 } })
     await removeBasicCard(card.id, a.db); await a.engine.sync(); await b.engine.sync()
     expect(await b.db.cards.get(card.id)).toBeUndefined()
     expect(await b.db.reviews.count()).toBe(1)
@@ -162,6 +164,22 @@ describe('local outbox + actual PostgreSQL RPC integration', () => {
     await a.engine.sync()
     expect(await a.db.cards.get(id)).toMatchObject({ front: 'Lokale Frage' })
     expect(await a.db.cards.count()).toBe(2)
+  })
+  it('retains a graphic locally until an old backend is upgraded, then syncs it without losing the schedule', async () => {
+    const a = await device(); await a.engine.connect('student@example.test')
+    const folder = (await a.db.decks.toArray())[0].id
+    const current = await a.transport.snapshot(owner) as Record<string, unknown>
+    const legacy = vi.spyOn(a.transport, 'snapshot').mockResolvedValue({ ...current, features: ['region-labels', 'basic-cards'] })
+    await a.db.syncMeta.delete('cardSvg')
+    const card = await saveBasicCard(folder, 'Graph?', 'Answer', undefined, a.db, { frontSvg: diagram, backSvg: '' })
+    await a.engine.sync()
+    expect(await a.db.cards.get(card)).toMatchObject({ frontSvg: diagram })
+    expect(await a.db.outbox.count()).toBe(1)
+    expect((await a.db.syncMeta.get('status'))?.value).toMatchObject({ error: expect.stringContaining('202610290001_card_svg.sql') })
+    legacy.mockRestore(); await a.engine.retry()
+    expect(await a.db.outbox.count()).toBe(0)
+    const b = await device(); await b.engine.connect('student@example.test')
+    expect(await b.db.cards.get(card)).toMatchObject({ frontSvg: diagram, schedule: { reps: 0 } })
   })
   it('keeps basic changes local against an old backend and synchronizes them after the upgrade', async () => {
     const a = await device(); await a.engine.connect('student@example.test')

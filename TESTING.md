@@ -1,5 +1,30 @@
 # Validation
 
+## Keyboard review and vector diagrams
+
+Validated on 2026-10-29: production build, all 130 automated checks and all 50
+Chromium browser scenarios against the production preview. Deno type-check and
+MCP runtime checks also pass with a valid graphic and an invalid SVG payload.
+Mobile and desktop review diagrams and the visible keyboard focus were inspected.
+
+Keyboard coverage verifies Space reveal without accidental grading on key release
+or repeat, default Gut focus, arrow/Home/End selection, Space confirmation and
+the retained numeric shortcuts. Actual stored ratings are checked. Vector tests
+cover question/answer separation, mobile scaling, offline rendering, persistence,
+editing/removal while preserving review history, and real MCP → PostgreSQL → two
+device synchronization. Old text writers preserve SVGs; idempotent acknowledgments
+do not restore older artwork over a later edit.
+
+The shared XML validator tests bounds, well-formedness, permitted diagrams,
+internal references, encoded external URLs, scripts, HTML, CSS, images, animation,
+DOCTYPE/entities, nesting and element limits. Rendering uses an image data URL,
+never inline SVG/HTML. SQL validates bounded passive payloads atomically.
+Snapshot v3 sends graphics for new/changed versions and reuses a verified local
+cache for matching versions; tombstones omit graphics. Actual SQL and device tests
+cover this path and the pre-migration pending queue. Missing-RPC fallback preserves
+older backends; authentication failures never fall back. No hosted migration or
+deployment was performed by these local tests.
+
 ## Targeted ChatGPT deletion
 
 Validated on 2026-10-20: production build, all 111 unit/component/SQL/integration

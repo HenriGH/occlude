@@ -40,6 +40,11 @@ Inhalt gelöscht werden. Vor Ordnerlöschungen wird der Umfang geprüft.
 
 - `list_folders` liest ausschließlich Namen, IDs und Hierarchie der eigenen Ordner.
 - `create_flashcards` erstellt bis zu 50 neue Karten pro Aufruf. Neue Ordner sind möglich.
+- Optional können `front_svg` und `back_svg` statische SVG-Diagramme enthalten.
+  Diese werden direkt gespeichert, lokal zwischengespeichert und zusammen mit
+  Frage beziehungsweise Antwort angezeigt. Antwortgrafiken bleiben bis zum
+  Aufdecken verborgen. Skripte, HTML und externe Ressourcen sind ausgeschlossen;
+  interne ChatGPT-Canvas-Dateien werden nicht automatisch ausgelesen.
 - `list_flashcards` findet Karten anhand von Fragen/Maskenbeschriftungen, paginiert
   mit IDs/Versionen. Antworten, Bildinhalte und Lernverläufe bleiben unzugänglich.
 - `delete_flashcards` löscht bis zu 100 explizite Karten-IDs mit Versionsprüfung.

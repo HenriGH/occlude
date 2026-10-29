@@ -8,7 +8,7 @@ export class CloudError extends Error {
 }
 export interface Transport {
   userId(): Promise<string>
-  snapshot(owner: string): Promise<unknown>
+  snapshot(owner: string, knownCards?: Record<string, number>): Promise<unknown>
   apply(operation: WireOperation, owner: string): Promise<void>
   upload(owner: string, asset: Asset): Promise<void>
   download(owner: string, hash: string): Promise<Blob>
@@ -49,8 +49,11 @@ export function supabaseTransport(client: SupabaseClient, configuration: { url: 
     async userId() {
       return (await authorized()).userId
     },
-    async snapshot(owner) {
+    async snapshot(owner, knownCards = {}) {
       const { scoped } = await authorized(owner)
+      const compact = await scoped.rpc('occlude_snapshot_v3', { p_known_cards: knownCards })
+      if (!compact.error) return compact.data
+      if (compact.error.code !== 'PGRST202' && compact.error.code !== '42883') failure(compact.error)
       const response = await scoped.rpc('occlude_snapshot_v2')
       if (!response.error) return response.data
       if (response.error.code !== 'PGRST202' && response.error.code !== '42883') failure(response.error)
